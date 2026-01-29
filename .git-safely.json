@@ -1,0 +1,11 @@
+{
+  "plugins": {
+    "web-ui": {
+      "enabled": true,
+      "config": {
+        "autoOpen": true,
+        "port": 3450
+      }
+    }
+  }
+}
