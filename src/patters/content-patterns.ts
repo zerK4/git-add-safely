@@ -1,9 +1,12 @@
 export const contentPatterns = [
-  // AWS Credentials
-  { name: "AWS Access Key", regex: /AKIA[0-9A-Z]{16}/ },
-  { name: "AWS Secret Key", regex: /[A-Za-z0-9/+=]{40}/ },
-  { name: "AWS Session Token", regex: /FwoGZXIvYXdzE[A-Za-z0-9/+=]+/ },
-  { name: "AWS Account ID", regex: /[0-9]{12}/ },
+  // AWS Credentials - Made more specific with context
+  { name: "AWS Access Key", regex: /AKIA[0-9A-Z]{16}/ }, // This one is good - specific prefix
+  {
+    name: "AWS Secret Key",
+    regex: /(?:aws[_-]?secret[_-]?(?:access[_-]?)?key|secret[_-]?(?:access[_-]?)?key)\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?/i
+  },
+  { name: "AWS Session Token", regex: /FwoGZXIvYXdzE[A-Za-z0-9/+=]+/ }, // Good - specific prefix
+  // Removed AWS Account ID - too generic (any 12 digits)
 
   // Google Cloud Platform
   { name: "Google API Key", regex: /AIza[0-9A-Za-z\-_]{35}/ },
@@ -18,13 +21,19 @@ export const contentPatterns = [
       /"private_key":\s*"-----BEGIN PRIVATE KEY-----[^"]*-----END PRIVATE KEY-----"/,
   },
 
-  // Azure
-  { name: "Azure Client Secret", regex: /[A-Za-z0-9~._-]{34,40}/ },
+  // Azure - Made more specific
   {
-    name: "Azure Client ID",
-    regex: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
+    name: "Azure Client Secret",
+    regex: /(?:azure[_-]?client[_-]?secret|client[_-]?secret)\s*[:=]\s*['"]?[A-Za-z0-9~._-]{34,40}['"]?/i
   },
-  { name: "Azure Storage Key", regex: /[A-Za-z0-9+/]{88}==/ },
+  {
+    name: "Azure Client ID (GUID)",
+    regex: /(?:azure[_-]?client[_-]?id|client[_-]?id|tenant[_-]?id|subscription[_-]?id)\s*[:=]\s*['"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['"]?/i,
+  },
+  {
+    name: "Azure Storage Key",
+    regex: /(?:azure[_-]?storage[_-]?key|storage[_-]?(?:account[_-]?)?key)\s*[:=]\s*['"]?[A-Za-z0-9+/]{88}==["']?/i
+  },
 
   // Private Keys
   {
@@ -199,14 +208,23 @@ export const contentPatterns = [
   { name: "Stripe Publishable Key", regex: /pk_live_[A-Za-z0-9]{24}/ },
   { name: "Stripe Webhook Secret", regex: /whsec_[A-Za-z0-9]{32}/ },
 
-  // PayPal
-  { name: "PayPal Client ID", regex: /[A-Za-z0-9_-]{80}/ },
-  { name: "PayPal Client Secret", regex: /[A-Za-z0-9_-]{80}/ },
+  // PayPal - Made specific with context
+  {
+    name: "PayPal Client ID",
+    regex: /(?:paypal[_-]?client[_-]?id)\s*[:=]\s*['"]?[A-Za-z0-9_-]{80}['"]?/i
+  },
+  {
+    name: "PayPal Client Secret",
+    regex: /(?:paypal[_-]?(?:client[_-]?)?secret)\s*[:=]\s*['"]?[A-Za-z0-9_-]{80}['"]?/i
+  },
 
-  // Twilio
-  { name: "Twilio Account SID", regex: /AC[a-f0-9]{32}/ },
-  { name: "Twilio Auth Token", regex: /[a-f0-9]{32}/ },
-  { name: "Twilio API Key", regex: /SK[a-f0-9]{32}/ },
+  // Twilio - Good specific prefixes
+  { name: "Twilio Account SID", regex: /AC[a-f0-9]{32}/ }, // Good - specific prefix
+  {
+    name: "Twilio Auth Token",
+    regex: /(?:twilio[_-]?auth[_-]?token|auth[_-]?token)\s*[:=]\s*['"]?[a-f0-9]{32}['"]?/i
+  },
+  { name: "Twilio API Key", regex: /SK[a-f0-9]{32}/ }, // Good - specific prefix
 
   // SendGrid
   {
@@ -244,10 +262,10 @@ export const contentPatterns = [
     regex: /https:\/\/[A-Za-z0-9\-_]+\.firebaseio\.com/,
   },
 
-  // Heroku
+  // Heroku - Made specific with context
   {
     name: "Heroku API Key",
-    regex: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
+    regex: /(?:heroku[_-]?api[_-]?key)\s*[:=]\s*['"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['"]?/i,
   },
 
   // JWT Tokens
@@ -262,10 +280,19 @@ export const contentPatterns = [
     regex: /ssh-(?:rsa|dss|ed25519|ecdsa) [A-Za-z0-9+/=]+/,
   },
 
-  // Cryptocurrency
-  { name: "Bitcoin Address", regex: /[13][a-km-zA-HJ-NP-Z1-9]{25,34}/ },
-  { name: "Ethereum Address", regex: /0x[a-fA-F0-9]{40}/ },
-  { name: "Private Key (Hex)", regex: /[0-9a-fA-F]{64}/ },
+  // Cryptocurrency - Made more specific
+  {
+    name: "Bitcoin Address",
+    regex: /(?:bitcoin[_-]?address|btc[_-]?address)\s*[:=]\s*['"]?[13][a-km-zA-HJ-NP-Z1-9]{25,34}['"]?/i
+  },
+  {
+    name: "Ethereum Address",
+    regex: /(?:ethereum[_-]?address|eth[_-]?address)\s*[:=]\s*['"]?0x[a-fA-F0-9]{40}['"]?/i
+  },
+  {
+    name: "Private Key (Hex)",
+    regex: /(?:private[_-]?key|priv[_-]?key)\s*[:=]\s*['"]?[0-9a-fA-F]{64}['"]?/i
+  },
 
   // Docker Hub
   { name: "Docker Hub Token", regex: /dckr_pat_[A-Za-z0-9_-]{32}/ },
@@ -362,23 +389,7 @@ export const contentPatterns = [
       /(?:license[_-]?key|licensekey)\s*[:=]\s*['"]*[A-Za-z0-9\-]{16,}['"]*(?:\s|$)/i,
   },
 
-  // Phone Numbers (potentially sensitive)
-  {
-    name: "Phone Number",
-    regex: /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}/,
-  },
-
-  // Credit Card Numbers (basic pattern)
-  {
-    name: "Credit Card",
-    regex:
-      /(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})/,
-  },
-
-  // IP Addresses (private ranges)
-  {
-    name: "Private IP",
-    regex:
-      /(?:10\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|172\.(?:1[6-9]|2[0-9]|3[0-1])\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|192\.168\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))/,
-  },
+  // Removed: Phone Number - too generic, matches many numeric patterns
+  // Removed: Credit Card - too risky for false positives with numeric IDs
+  // Removed: Private IP - too generic, matches internal network configs legitimately
 ];

@@ -7,6 +7,29 @@ const readline = await import("node:readline/promises");
 
 // parse args
 const args = process.argv.slice(2);
+
+// Handle help flag
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(`
+git-add-safely - Safe git add with secret detection
+
+Usage:
+  git-add-safely <files> [--force]
+  git-add-safely .
+  git-add-safely file1.js file2.ts
+
+Options:
+  --force    Skip all security checks
+  --help     Show this help message
+
+Examples:
+  git-add-safely .                    # Add all files with safety checks
+  git-add-safely src/config.ts        # Add specific file
+  git-add-safely . --force            # Skip all checks
+`);
+  process.exit(0);
+}
+
 const force = args.includes("--force");
 if (args.length === 0) {
   console.error("⚠️ Please specify what to add (e.g., . or file name)");
@@ -64,6 +87,11 @@ for (const file of stagedFiles) {
     continue;
   }
 
+  // Skip test files - they often contain mock data and function names that trigger false positives
+  const isTestFile = /\.(test|spec)\.(ts|js|tsx|jsx|php)$/i.test(file) ||
+                     /\/(tests?|__tests__|spec)\//i.test(file) ||
+                     /Test\.(php|java|cs|py)$/i.test(file);
+
   try {
     const content = await fs.readFile(file, "utf-8");
     const lines = content.split("\n");
@@ -72,6 +100,19 @@ for (const file of stagedFiles) {
     lines.forEach((line, i) => {
       for (const p of contentPatterns) {
         if (p.regex.test(line)) {
+          // For test files, be more lenient - only flag if the pattern looks very specific
+          if (isTestFile) {
+            // Skip generic patterns for test files, only flag highly specific ones
+            const highConfidencePatterns = [
+              "AWS Access Key", "GitHub Personal Access Token", "Stripe Secret Key",
+              "SendGrid API Key", "Slack Token", "Discord Bot Token",
+              "RSA Private Key", "DSA Private Key", "EC Private Key", "OpenSSH Private Key"
+            ];
+            if (!highConfidencePatterns.includes(p.name)) {
+              return; // Skip this detection for test files
+            }
+          }
+
           console.warn(
             `⚠️  [${p.name}] detected in ${file}:${i + 1}: ${line.trim()}`,
           );
