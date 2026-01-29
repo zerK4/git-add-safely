@@ -1,0 +1,20 @@
+{
+  "name": "git-add-safely",
+  "module": "index.ts",
+  "type": "module",
+  "bin": {
+    "git-add-safely": "dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "g": "^2.0.1"
+  }
+}
