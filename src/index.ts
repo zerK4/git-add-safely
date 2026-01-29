@@ -47,7 +47,7 @@ Configuration:
 }
 
 const force = args.includes("--force");
-const noUI = args.includes("--no-ui");
+const ui = args.includes("--ui");
 
 if (args.length === 0 || args.every((arg) => arg.startsWith("--"))) {
   console.error("⚠️  Please specify what to add (e.g., . or file name)");
@@ -60,7 +60,7 @@ async function main() {
   const scanner = new SecretScanner();
 
   // Register plugins
-  if (!noUI) {
+  if (ui) {
     await pluginLoader.registerPlugin(new WebUIPlugin());
   }
 
@@ -121,7 +121,7 @@ async function main() {
     );
 
     // If no UI, ask via CLI
-    if (noUI) {
+    if (!ui) {
       const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
