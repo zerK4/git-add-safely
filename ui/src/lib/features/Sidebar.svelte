@@ -46,6 +46,8 @@
                             {file}
                             isSelected={store.selectedFile === file.path}
                             hasWarning={hasWarning(file.path)}
+                            noteCount={store.noteCountsByFile[file.path] ?? 0}
+                            diffStats={store.diffStats[file.path]}
                             onclick={() => selectFile(file.path)}
                         />
                     {/each}

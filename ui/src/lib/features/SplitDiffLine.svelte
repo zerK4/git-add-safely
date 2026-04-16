@@ -30,10 +30,11 @@
     return "text-muted-foreground/30";
   }
 
-  const anchorRawIndex = $derived((row.left ?? row.right)!.rawIndex);
-  const isNoteOpen = $derived(store.activeNoteIndex === anchorRawIndex);
+  const anchor = $derived(row.right ?? row.left);
+  const anchorLineNo = $derived(anchor?.newLineNo ?? anchor?.oldLineNo ?? anchor?.rawIndex ?? 0);
+  const isNoteOpen = $derived(store.activeNoteIndex === anchorLineNo);
   const existingNote = $derived(
-    store.selectedFile ? getNote(store.selectedFile, anchorRawIndex) : undefined
+    store.selectedFile ? getNote(store.selectedFile, anchorLineNo) : undefined
   );
 
   const lineWarnings = $derived(
@@ -79,7 +80,7 @@
                      opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100
                      transition-all duration-150 ease-out
                      {existingNote ? '!opacity-100 !scale-100 bg-primary/30 border-primary/60' : ''}"
-              onclick={() => openNoteEditor(anchorRawIndex)}
+              onclick={() => openNoteEditor(anchorLineNo)}
             >
               {#if existingNote}
                 <MessageSquare class="size-3" />
@@ -114,9 +115,9 @@
 
   {#if isNoteOpen}
     <InlineNote
-      rawIndex={anchorRawIndex}
+      rawIndex={anchorLineNo}
       initialContent={existingNote ?? ""}
-      onSave={(text) => saveNote(anchorRawIndex, text)}
+      onSave={(text) => saveNote(anchorLineNo, text)}
       onCancel={closeNoteEditor}
     />
   {/if}

@@ -32,6 +32,48 @@ export async function postCancel(): Promise<void> {
   await fetch("/api/cancel", { method: "POST" });
 }
 
+// --- Diff stats ---
+
+export async function fetchDiffStats(): Promise<Record<string, { added: number; removed: number }>> {
+  try {
+    const res = await fetch("/api/diff-stats");
+    if (!res.ok) return {};
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) return {};
+    return res.json();
+  } catch {
+    return {};
+  }
+}
+
+// --- Inline notes ---
+
+export async function fetchNotes(filePath: string): Promise<Record<string, string>> {
+  const res = await fetch(`/api/notes?file=${encodeURIComponent(filePath)}`);
+  if (!res.ok) return {};
+  return res.json();
+}
+
+export async function fetchAllNotes(): Promise<Record<string, Record<string, string>>> {
+  try {
+    const res = await fetch("/api/notes/all");
+    if (!res.ok) return {};
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) return {};
+    return res.json();
+  } catch {
+    return {};
+  }
+}
+
+export async function saveNoteRemote(filePath: string, lineNo: number, content: string): Promise<void> {
+  await fetch("/api/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: filePath, lineNo, content }),
+  });
+}
+
 // --- History ---
 
 export interface Conversation {

@@ -10,6 +10,7 @@ import {
   getConversation,
   deleteConversation,
 } from "../core/history-db";
+import { getNotesForFile, getAllNotes, setNote } from "../core/notes-db";
 
 interface WebUIConfig {
   autoOpen?: boolean;
@@ -442,6 +443,52 @@ export class WebUIPlugin implements Plugin {
         if (url.pathname === "/api/history/messages" && req.method === "POST") {
           const body = await req.json() as { conversation_id: number; role: "user" | "assistant"; content: string };
           addMessage(body.conversation_id, body.role, body.content);
+          return Response.json({ ok: true });
+        }
+
+        // --- Diff stats ---
+
+        if (url.pathname === "/api/diff-stats") {
+          const result = spawnSync("git", ["diff", "--cached", "--numstat"], { encoding: "utf-8" });
+          const stats: Record<string, { added: number; removed: number }> = {};
+          for (const line of result.stdout.trim().split("\n").filter(Boolean)) {
+            const [added, removed, ...fileParts] = line.split("\t");
+            const file = fileParts.join("\t");
+            stats[file] = { added: parseInt(added) || 0, removed: parseInt(removed) || 0 };
+          }
+          return Response.json(stats);
+        }
+
+        // --- Inline notes endpoints ---
+
+        if (url.pathname === "/api/notes/all" && req.method === "GET") {
+          const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+          const repoRoot = repoResult.stdout.trim();
+          return Response.json(getAllNotes(repoRoot));
+        }
+
+        if (url.pathname === "/api/notes" && req.method === "GET") {
+          const file = url.searchParams.get("file");
+          if (!file) return new Response("Missing file param", { status: 400 });
+          const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+          const repoRoot = repoResult.stdout.trim();
+          return Response.json(getNotesForFile(repoRoot, file));
+        }
+
+        if (url.pathname === "/api/notes" && req.method === "POST") {
+          const body = await req.json() as { file: string; lineNo: number; content: string };
+          const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+          const repoRoot = repoResult.stdout.trim();
+
+          // Ensure .git-notes is gitignored
+          const gitignorePath = join(repoRoot, ".gitignore");
+          let gitignore = "";
+          try { gitignore = readFileSync(gitignorePath, "utf-8"); } catch {}
+          if (!gitignore.includes(".git-notes")) {
+            writeFileSync(gitignorePath, gitignore + (gitignore.endsWith("\n") ? "" : "\n") + ".git-notes/\n");
+          }
+
+          setNote(repoRoot, body.file, body.lineNo, body.content);
           return Response.json({ ok: true });
         }
 

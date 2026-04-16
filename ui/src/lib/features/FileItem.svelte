@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertTriangle } from "@lucide/svelte";
+  import { AlertTriangle, MessageSquare } from "@lucide/svelte";
   import { Badge } from "$lib/components/ui/badge";
   import type { FileStatus } from "$lib/types";
 
@@ -7,11 +7,15 @@
     file,
     isSelected,
     hasWarning,
+    noteCount = 0,
+    diffStats,
     onclick,
   }: {
     file: FileStatus;
     isSelected: boolean;
     hasWarning: boolean;
+    noteCount?: number;
+    diffStats?: { added: number; removed: number };
     onclick: () => void;
   } = $props();
 
@@ -34,7 +38,23 @@
 >
   <Badge class="text-[10px] px-1 py-0 h-4 font-bold shrink-0 {meta.class}">{meta.label}</Badge>
   <span class="font-mono text-xs truncate">{filename}</span>
-  {#if hasWarning}
-    <AlertTriangle class="size-3 text-status-warn shrink-0 ml-auto" />
-  {/if}
+
+  <div class="ml-auto flex items-center gap-1.5 shrink-0">
+    {#if diffStats && (diffStats.added > 0 || diffStats.removed > 0)}
+      <span class="font-mono text-[10px] leading-none">
+        {#if diffStats.added > 0}<span class="text-status-good">+{diffStats.added}</span>{/if}
+        {#if diffStats.added > 0 && diffStats.removed > 0}<span class="text-muted-foreground/40"> </span>{/if}
+        {#if diffStats.removed > 0}<span class="text-destructive">-{diffStats.removed}</span>{/if}
+      </span>
+    {/if}
+    {#if noteCount > 0}
+      <span class="flex items-center gap-0.5 text-primary/70">
+        <MessageSquare class="size-3" />
+        <span class="text-[10px] font-sans leading-none">{noteCount}</span>
+      </span>
+    {/if}
+    {#if hasWarning}
+      <AlertTriangle class="size-3 text-status-warn" />
+    {/if}
+  </div>
 </button>

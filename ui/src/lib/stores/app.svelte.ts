@@ -1,4 +1,4 @@
-import { fetchContext, fetchDiff, postApprove, postCancel, createConversation, persistMessage, fetchMessages } from "$lib/api/client";
+import { fetchContext, fetchDiff, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes } from "$lib/api/client";
 import { parseDiff, toSplitRows } from "$lib/diff/parser";
 import type { AppContext, FileStatus, ParsedDiff, SplitRow, ChatMessage } from "$lib/types";
 
@@ -20,11 +20,20 @@ let _chatMessages = $state<ChatMessage[]>([]);
 let _chatStreaming = $state(false);
 let _reviewedFile = $state<string | null>(null);
 let _activeConversationId = $state<number | null>(null);
+// Diff stats per file
+let _diffStats = $state<Record<string, { added: number; removed: number }>>({});
 // Review all view
 let _reviewAllOpen = $state(false);
 let _reviewAllPinned = $state(false); // true = shown as right panel while DiffView is in center
 
 // Derived
+const _noteCountsByFile = $derived<Record<string, number>>(
+  Object.keys(_notes).reduce<Record<string, number>>((map, key) => {
+    const file = key.split("::")[0];
+    map[file] = (map[file] ?? 0) + 1;
+    return map;
+  }, {})
+);
 const _parsedDiff = $derived<ParsedDiff | null>(_rawDiff ? parseDiff(_rawDiff) : null);
 const _splitRows = $derived<SplitRow[][] | null>(_parsedDiff ? toSplitRows(_parsedDiff.hunks) : null);
 const _warningCount = $derived(_context?.scanResults.length ?? 0);
@@ -61,6 +70,8 @@ export const store = {
   get activeConversationId() { return _activeConversationId; },
   get reviewAllOpen() { return _reviewAllOpen; },
   get reviewAllPinned() { return _reviewAllPinned; },
+  get diffStats() { return _diffStats; },
+  get noteCountsByFile() { return _noteCountsByFile; },
 };
 
 // --- Actions ---
@@ -69,12 +80,23 @@ export async function loadContext() {
   _contextError = null;
   try {
     _context = await fetchContext();
+    // Load stats and all notes in parallel, non-blocking
+    Promise.all([fetchDiffStats(), fetchAllNotes()]).then(([stats, allNotes]) => {
+      _diffStats = stats;
+      // Populate _notes from disk so counts show without opening each file
+      for (const [filePath, lineMap] of Object.entries(allNotes)) {
+        for (const [lineNo, content] of Object.entries(lineMap)) {
+          _notes[`${filePath}::${lineNo}`] = content;
+        }
+      }
+    }).catch(() => {});
   } catch (e) {
     _contextError = (e as Error).message;
   } finally {
     _contextLoading = false;
   }
 }
+
 
 export async function selectFile(path: string) {
   if (_selectedFile === path) return;
@@ -87,7 +109,12 @@ export async function selectFile(path: string) {
     _reviewAllPinned = true;
   }
   try {
-    _rawDiff = await fetchDiff(path);
+    const [diff, remoteNotes] = await Promise.all([fetchDiff(path), fetchNotes(path)]);
+    _rawDiff = diff;
+    // Merge remote notes into local state (remote wins)
+    for (const [lineNo, content] of Object.entries(remoteNotes)) {
+      _notes[`${path}::${lineNo}`] = content;
+    }
   } catch {
     _rawDiff = null;
   } finally {
@@ -99,27 +126,28 @@ export function setDiffMode(mode: "unified" | "split") {
   _diffMode = mode;
 }
 
-export function openNoteEditor(rawIndex: number) {
-  _activeNoteIndex = _activeNoteIndex === rawIndex ? null : rawIndex;
+export function openNoteEditor(lineNo: number) {
+  _activeNoteIndex = _activeNoteIndex === lineNo ? null : lineNo;
 }
 
 export function closeNoteEditor() {
   _activeNoteIndex = null;
 }
 
-export function saveNote(rawIndex: number, text: string) {
+export async function saveNote(lineNo: number, text: string) {
   if (!_selectedFile) return;
-  const key = `${_selectedFile}::${rawIndex}`;
+  const key = `${_selectedFile}::${lineNo}`;
   if (text.trim()) {
     _notes[key] = text;
   } else {
     delete _notes[key];
   }
   _activeNoteIndex = null;
+  await saveNoteRemote(_selectedFile, lineNo, text);
 }
 
-export function getNote(filePath: string, rawIndex: number): string | undefined {
-  return _notes[`${filePath}::${rawIndex}`];
+export function getNote(filePath: string, lineNo: number): string | undefined {
+  return _notes[`${filePath}::${lineNo}`];
 }
 
 export async function approve() {

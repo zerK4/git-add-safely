@@ -27,9 +27,10 @@
         : "text-muted-foreground/30"
   );
 
-  const isNoteOpen = $derived(store.activeNoteIndex === line.rawIndex);
+  const lineNo = $derived(line.newLineNo ?? line.oldLineNo ?? line.rawIndex);
+  const isNoteOpen = $derived(store.activeNoteIndex === lineNo);
   const existingNote = $derived(
-    store.selectedFile ? getNote(store.selectedFile, line.rawIndex) : undefined
+    store.selectedFile ? getNote(store.selectedFile, lineNo) : undefined
   );
 
   // Warnings that match this line (by new or old line number)
@@ -59,7 +60,7 @@
                      opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100
                      transition-all duration-150 ease-out
                      {existingNote ? '!opacity-100 !scale-100 bg-primary/30 border-primary/60' : ''}"
-              onclick={() => openNoteEditor(line.rawIndex)}
+              onclick={() => openNoteEditor(lineNo)}
             >
               {#if existingNote}
                 <MessageSquare class="size-3" />
@@ -110,9 +111,9 @@
 
   {#if isNoteOpen}
     <InlineNote
-      rawIndex={line.rawIndex}
+      rawIndex={lineNo}
       initialContent={existingNote ?? ""}
-      onSave={(text) => saveNote(line.rawIndex, text)}
+      onSave={(text) => saveNote(lineNo, text)}
       onCancel={closeNoteEditor}
     />
   {/if}
