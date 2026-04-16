@@ -62,42 +62,16 @@
 </script>
 
 <div class="group">
-  <div class="flex items-stretch text-xs font-mono {bgClass} transition-colors relative">
-
-    <!-- Note button — left gutter, visible on hover -->
-    <div class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center z-10">
-      <TooltipProvider delayDuration={500}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              class="flex items-center justify-center w-6 h-6 rounded-md
-                     bg-primary/20 border border-primary/40 text-primary
-                     hover:bg-primary/35 hover:border-primary/60 hover:text-primary
-                     opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100
-                     transition-all duration-150 ease-out
-                     {existingNote ? '!opacity-100 !scale-100 bg-primary/30 border-primary/60' : ''}"
-              onclick={() => openNoteEditor(line.rawIndex)}
-            >
-              {#if existingNote}
-                <MessageSquare class="size-3" />
-              {:else}
-                <Plus class="size-3.5" />
-              {/if}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right" class="text-xs">
-            {existingNote ? "Edit note" : "Add note"}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
+  <div class="flex items-stretch text-xs font-mono {bgClass} transition-colors">
 
     <!-- Line numbers -->
-    <div class="flex shrink-0 pl-6 select-none">
-      <span class="w-12 text-right pr-3 py-0.5 text-muted-foreground/30 border-r border-border">
-        {line.oldLineNo ?? ""}
-      </span>
-      <span class="w-12 text-right pr-3 py-0.5 text-muted-foreground/30 border-r border-border">
+    <div class="flex shrink-0 select-none">
+      {#if store.diffLineNumbers === 2}
+        <span class="w-9 text-right pr-2 py-0.5 text-muted-foreground/30 border-r border-border">
+          {line.oldLineNo ?? ""}
+        </span>
+      {/if}
+      <span class="w-9 text-right pr-2 py-0.5 text-muted-foreground/30 border-r border-border">
         {line.newLineNo ?? ""}
       </span>
     </div>
@@ -106,7 +80,33 @@
     <span class="w-5 text-center py-0.5 shrink-0 select-none {prefixColor}">{linePrefix}</span>
 
     <!-- Content -->
-    <span class="py-0.5 px-2 whitespace-pre">{line.content}</span>
+    <span class="py-0.5 px-2 whitespace-pre flex-1">{line.content}</span>
+
+    <!-- Note button — sticky right, visible on hover -->
+    <div class="flex items-center pr-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+      <TooltipProvider delayDuration={500}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              class="flex items-center justify-center w-5 h-5 rounded
+                     bg-primary/20 border border-primary/40 text-primary
+                     hover:bg-primary/35 hover:border-primary/60
+                     {existingNote ? '!opacity-100 bg-primary/30 border-primary/60' : ''}"
+              onclick={() => openNoteEditor(line.rawIndex)}
+            >
+              {#if existingNote}
+                <MessageSquare class="size-2.5" />
+              {:else}
+                <Plus class="size-3" />
+              {/if}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="left" class="text-xs">
+            {existingNote ? "Edit note" : "Add note"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
   </div>
 
   {#each lineWarnings as warning}

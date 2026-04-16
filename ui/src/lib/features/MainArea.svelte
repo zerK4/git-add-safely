@@ -5,7 +5,6 @@
   import ClaudePanel from "./ClaudePanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
   import ReviewAllView from "./ReviewAllView.svelte";
-  import SettingsView from "./SettingsView.svelte";
 
   let { historyOpen = false, onCloseHistory }: {
     historyOpen?: boolean;
@@ -15,9 +14,7 @@
 
 <main class="flex-1 flex overflow-hidden min-w-0">
   <!-- Main content area -->
-  {#if store.settingsOpen}
-    <SettingsView />
-  {:else if store.reviewAllOpen && !store.reviewAllPinned}
+  {#if store.reviewAllOpen && !store.reviewAllPinned}
     <!-- Review All occupies full center -->
     <ReviewAllView />
   {:else if store.selectedFile}

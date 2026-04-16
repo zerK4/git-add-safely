@@ -191,9 +191,14 @@ export interface FeatureAssignments {
   codeReview?: string;
 }
 
+export interface UIPreferences {
+  diffLineNumbers?: 1 | 2; // 1 = new only, 2 = old + new (default)
+}
+
 export interface AppSettings {
   providers: AIProviderConfig[];
   featureAssignments: FeatureAssignments;
+  ui?: UIPreferences;
 }
 
 export async function fetchSettings(): Promise<AppSettings> {

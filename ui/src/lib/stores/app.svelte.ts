@@ -1,5 +1,5 @@
 import { fetchContext, fetchDiff, fetchUnstagedDiff, stageFile, unstageFile, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes, fetchSettings, postSettings } from "$lib/api/client";
-import type { NoteEntry, AppSettings } from "$lib/api/client";
+import type { NoteEntry, AppSettings, UIPreferences } from "$lib/api/client";
 import { parseDiff, toSplitRows } from "$lib/diff/parser";
 import type { AppContext, FileStatus, ParsedDiff, SplitRow, ChatMessage } from "$lib/types";
 
@@ -85,6 +85,7 @@ export const store = {
   // Settings
   get settingsOpen() { return _settingsOpen; },
   get settings() { return _settings; },
+  get diffLineNumbers(): 1 | 2 { return (_settings?.ui?.diffLineNumbers ?? 2); },
   // Watch mode
   get watchMode() { return _watchMode; },
   get unstagedFiles() { return _unstagedFiles; },
@@ -497,7 +498,7 @@ export async function loadSettingsFromServer() {
 
 export async function saveSettingsToServer(settings: AppSettings) {
   await postSettings(settings);
-  _settings = settings;
+  _settings = { ...settings };
 }
 
 export async function saveReviewToFile() {

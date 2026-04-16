@@ -2,7 +2,8 @@
   import { AlertTriangle, CheckCircle, GitBranch, History, Bot, Settings } from "@lucide/svelte";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
-  import { store, openReviewAll, closeReviewAll, openSettings, closeSettings } from "$lib/stores/app.svelte";
+  import { push } from "svelte-spa-router";
+  import { store, openReviewAll, closeReviewAll } from "$lib/stores/app.svelte";
 
   let { onToggleHistory }: { onToggleHistory?: () => void } = $props();
 </script>
@@ -41,10 +42,10 @@
       Review changes
     </Button>
     <Button
-      variant={store.settingsOpen ? "secondary" : "ghost"}
+      variant="ghost"
       size="sm"
-      class="h-7 w-7 p-0 {store.settingsOpen ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}"
-      onclick={() => store.settingsOpen ? closeSettings() : openSettings()}
+      class="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+      onclick={() => push("/settings")}
     >
       <Settings class="size-3.5" />
     </Button>

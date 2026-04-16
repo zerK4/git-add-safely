@@ -51,7 +51,7 @@
 <aside class="w-64 shrink-0 border-r border-border bg-sidebar flex flex-col overflow-hidden">
 
     <!-- Staged section -->
-    <div class="flex flex-col min-h-0" style="max-height: 50%;">
+    <div class="flex flex-col min-h-0 flex-1" style={(store.context?.stagedFiles.length ?? 0) > 0 && store.unstagedFiles.length > 0 ? "max-height: 50%" : ""}>
         <div class="px-4 py-2.5 shrink-0 flex items-center justify-between">
             <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-sans">
                 Staged &middot; {store.context?.stagedFiles.length ?? 0}
@@ -107,7 +107,7 @@
     <!-- Unstaged section — only in watch mode -->
     {#if store.watchMode && store.unstagedFiles.length > 0}
         <Separator />
-        <div class="flex flex-col min-h-0" style="max-height: 50%;">
+        <div class="flex flex-col min-h-0 flex-1" style={(store.context?.stagedFiles.length ?? 0) > 0 && store.unstagedFiles.length > 0 ? "max-height: 50%" : ""}>
             <div class="px-4 py-2.5 shrink-0 flex items-center justify-between">
                 <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-sans">
                     Changes &middot; {store.unstagedFiles.length}

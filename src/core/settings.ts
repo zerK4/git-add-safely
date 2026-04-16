@@ -18,9 +18,14 @@ export interface FeatureAssignments {
   codeReview?: string;     // providerId
 }
 
+export interface UIPreferences {
+  diffLineNumbers?: 1 | 2;
+}
+
 export interface AppSettings {
   providers: AIProviderConfig[];
   featureAssignments: FeatureAssignments;
+  ui?: UIPreferences;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -41,6 +46,7 @@ export function readSettings(): AppSettings {
     return {
       providers: parsed.providers ?? [],
       featureAssignments: parsed.featureAssignments ?? {},
+      ui: parsed.ui ?? {},
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
