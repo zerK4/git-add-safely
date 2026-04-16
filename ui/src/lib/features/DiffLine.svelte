@@ -135,6 +135,10 @@
     <InlineNote
       rawIndex={line.rawIndex}
       initialContent={existingNote?.content ?? ""}
+      quotedContent={line.content}
+      quotedPrefix={linePrefix}
+      quotedBg={quotedLineBg}
+      quotedText={quotedLineText}
       onSave={(text) => saveNote(line.rawIndex, text)}
       onCancel={closeNoteEditor}
       onDelete={() => deleteNote(line.rawIndex)}

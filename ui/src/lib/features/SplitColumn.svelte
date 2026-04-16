@@ -152,6 +152,11 @@
         <InlineNote
           rawIndex={rawIdx}
           initialContent={existingNote?.content ?? ""}
+          quotedContent={content(row)}
+          quotedPrefix={prefix(row)}
+          quotedBg={quotedLineBg(row)}
+          quotedText={quotedLineText(row)}
+          paddingClass="px-3 py-2"
           onSave={(text) => saveNote(rawIdx, text)}
           onCancel={closeNoteEditor}
           onDelete={() => deleteNote(rawIdx)}
