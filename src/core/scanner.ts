@@ -115,7 +115,7 @@ export class SecretScanner {
       } catch (err: any) {
         // ENOENT = file deleted/renamed — staged deletion, skip silently
         if (err.code !== "ENOENT") {
-          console.error(`❌ Could not read ${file}:`, err.message);
+          console.error(`\x1b[31m  error  Could not read ${file}:\x1b[0m`, err.message);
         }
       }
     }

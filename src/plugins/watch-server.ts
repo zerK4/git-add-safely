@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join, extname } from "node:path";
+import { buildHostname, ensureHostsEntry } from "../core/hosts-manager";
 import { readSettings, writeSettings } from "../core/settings";
 import { streamAIResponse } from "../core/ai-runner";
 import { getProviderForFeature } from "../core/settings";
@@ -42,8 +43,11 @@ export class WatchModeServer {
 
   async start() {
     const repoName = this.repoRoot.split("/").pop() ?? "unknown";
-    console.log(`\nWatch mode — repo: ${repoName}`);
-    console.log(`Opening web UI at http://localhost:${PORT}`);
+    const hostname = buildHostname(repoName);
+    ensureHostsEntry(hostname);
+    const uiUrl = `http://${hostname}:${PORT}`;
+    console.log(`\n\x1b[1m\x1b[35mgit-add-safely\x1b[0m  \x1b[2mwatch mode\x1b[0m`);
+    console.log(`\x1b[2m  repo\x1b[0m   ${repoName}`);
 
     // Start file watcher — broadcast changes to all SSE clients
     this.watcher.onChange((status) => {
@@ -316,11 +320,14 @@ export class WatchModeServer {
       },
     });
 
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log("Watching for git changes... (Ctrl+C to stop)\n");
+    console.log(`\x1b[2m  url\x1b[0m    \x1b[36m\x1b[4m${uiUrl}\x1b[0m`);
+    console.log(`\x1b[2m  port\x1b[0m   ${PORT}`);
+    console.log(`\n\x1b[2m  watching for changes... Ctrl+C to stop\x1b[0m\n`);
 
     // Open browser
-    spawn("open", [`http://localhost:${PORT}`], { detached: true, stdio: "ignore" }).unref();
+    const platform = process.platform;
+    const openCmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
+    spawn(openCmd, [uiUrl], { detached: true, stdio: "ignore" }).unref();
 
     // Keep alive
     await new Promise(() => {});

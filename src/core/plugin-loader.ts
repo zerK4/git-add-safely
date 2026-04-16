@@ -86,7 +86,7 @@ export class PluginLoader {
       if (plugin.hooks.beforeAdd) {
         const result = await plugin.hooks.beforeAdd(context);
         if (result === false) {
-          console.log(`❌ Add prevented by plugin: ${plugin.name}`);
+          console.log(`\x1b[31m  error  Add prevented by plugin: ${plugin.name}\x1b[0m`);
           return false;
         }
       }

@@ -54,7 +54,7 @@ if (args.includes("--watch")) {
   const repoRootResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
   const repoRoot = repoRootResult.stdout.trim();
   if (!repoRoot) {
-    console.error("❌ Not inside a git repository.");
+    console.error("\x1b[31m  error  Not inside a git repository.\x1b[0m");
     process.exit(1);
   }
   const server = new WatchModeServer(repoRoot);
@@ -66,7 +66,7 @@ const force = args.includes("--force");
 const ui = args.includes("--ui");
 
 if (args.length === 0 || args.every((arg) => arg.startsWith("--"))) {
-  console.error("⚠️  Please specify what to add (e.g., . or file name)");
+  console.error("\x1b[33m  warn   Please specify what to add (e.g., . or file name)\x1b[0m");
   process.exit(1);
 }
 
@@ -87,7 +87,7 @@ async function main() {
   const repoRoot = repoRootResult.stdout.trim();
 
   if (!repoRoot) {
-    console.error("❌ Not inside a git repository.");
+    console.error("\x1b[31m  error  Not inside a git repository.\x1b[0m");
     process.exit(1);
   }
 
@@ -96,12 +96,12 @@ async function main() {
   const addResult = spawnSync("git", ["add", ...gitArgs], { stdio: "inherit" });
 
   if (addResult.status !== 0) {
-    console.error("❌ git add failed.");
+    console.error("\x1b[31m  error  git add failed.\x1b[0m");
     process.exit(addResult.status ?? 1);
   }
 
   if (force) {
-    console.log("--force flag used. Skipping all checks.");
+    console.log("  \x1b[2m--force: skipping all checks\x1b[0m");
     await pluginLoader.cleanup();
     process.exit(0);
   }
@@ -113,7 +113,7 @@ async function main() {
   const stagedFiles = diff.stdout.trim().split("\n").filter(Boolean);
 
   if (stagedFiles.length === 0) {
-    console.log("No files staged.");
+    console.log("\n\x1b[2m  No files staged.\x1b[0m\n");
     await pluginLoader.cleanup();
     process.exit(0);
   }
@@ -133,10 +133,11 @@ async function main() {
   const deleted  = fileStatuses.filter((f) => f.status === "deleted").length;
   const renamed  = fileStatuses.filter((f) => f.status === "renamed").length;
 
-  console.log("\n\x1b[1mStaged files:\x1b[0m");
+  console.log(`\n\x1b[1m\x1b[35mgit-add-safely\x1b[0m\n`);
+  console.log(`\x1b[1m  Staged files\x1b[0m`);
   for (const f of fileStatuses) {
-    const sym = statusSymbol[f.status] ?? "  ?";
-    console.log(`${sym}  ${f.path}`);
+    const sym = statusSymbol[f.status] ?? "  \x1b[2m?\x1b[0m";
+    console.log(`${sym}  \x1b[2m${f.path}\x1b[0m`);
   }
 
   const parts = [];
@@ -144,9 +145,9 @@ async function main() {
   if (modified) parts.push(`\x1b[33m${modified} modified\x1b[0m`);
   if (deleted)  parts.push(`\x1b[31m${deleted} deleted\x1b[0m`);
   if (renamed)  parts.push(`\x1b[36m${renamed} renamed\x1b[0m`);
-  console.log(`\n  ${parts.join("  ·  ")}\n`);
+  console.log(`\n  ${parts.join("  \x1b[2m/\x1b[0m  ")}\n`);
 
-  console.log("Scanning for sensitive information...");
+  console.log(`\x1b[2m  Scanning for secrets...\x1b[0m`);
 
   // Execute beforeScan hooks
   const filesToScan = await pluginLoader.executeBeforeScan(stagedFiles);
@@ -167,10 +168,10 @@ async function main() {
 
   // Handle results
   if (sensitiveFiles.size > 0) {
-    console.warn("\nWARNING: Potential sensitive data detected!");
-    console.warn(
-      `Files with sensitive content: ${Array.from(sensitiveFiles).join(", ")}`,
-    );
+    console.warn(`\n  \x1b[1m\x1b[33mwarn   Sensitive data detected\x1b[0m`);
+    for (const f of sensitiveFiles) {
+      console.warn(`     \x1b[33m${f}\x1b[0m`);
+    }
 
     // If no UI, ask via CLI
     if (!ui) {
@@ -185,26 +186,24 @@ async function main() {
       rl.close();
 
       if (!/^y(es)?$/i.test(answer.trim())) {
-        console.error("Unstaging problematic files...");
+        console.log(`\n  \x1b[2mUnstaging flagged files...\x1b[0m`);
         spawnSync("git", ["reset", "--", ...Array.from(sensitiveFiles)], {
           stdio: "inherit",
         });
-        console.error(
-          "Problematic files have been unstaged. Fix them and try again.",
-        );
+        console.log(`  \x1b[31mUnstaged. Fix secrets and try again.\x1b[0m\n`);
         await pluginLoader.cleanup();
         process.exit(1);
       }
     }
   } else {
-    console.log("No sensitive patterns detected.");
+    console.log(`  \x1b[32mNo secrets detected\x1b[0m`);
   }
 
   // Execute beforeAdd hooks (can prevent the operation)
   const shouldContinue = await pluginLoader.executeBeforeAdd(updatedContext);
 
   if (!shouldContinue) {
-    console.error("Operation cancelled by plugin.");
+    console.log(`\n  \x1b[31mCancelled\x1b[0m\n`);
     await pluginLoader.cleanup();
     process.exit(1);
   }

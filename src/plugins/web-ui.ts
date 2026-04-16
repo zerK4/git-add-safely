@@ -2,6 +2,7 @@ import type { Plugin, PluginContext } from "../types/plugin";
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
+import { buildHostname, ensureHostsEntry } from "../core/hosts-manager";
 import {
   createConversation,
   addMessage,
@@ -54,18 +55,24 @@ export class WebUIPlugin implements Plugin {
         return context;
       }
 
-      console.log(`\nOpening web UI at http://localhost:${this.config.port}`);
+      const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+      const projectName = repoResult.stdout.trim().split("/").pop() ?? "project";
+      const hostname = buildHostname(projectName);
+      ensureHostsEntry(hostname);
+
+      const uiUrl = `http://${hostname}:${this.config.port}`;
+      console.log(`\x1b[2m  url\x1b[0m    \x1b[36m\x1b[4m${uiUrl}\x1b[0m`);
 
       await this.startServer(context);
 
       if (this.config.autoOpen) {
-        this.openBrowser();
+        this.openBrowser(uiUrl);
       }
 
       const userDecision = await this.waitForUserDecision();
 
       if (!userDecision) {
-        throw new Error("User cancelled the operation");
+        throw new Error("Cancelled");
       }
 
       return context;
@@ -124,14 +131,14 @@ export class WebUIPlugin implements Plugin {
         }
 
         if (url.pathname === "/api/approve") {
-          console.log("\nUser approved changes");
+          console.log(`\n  \x1b[32mApproved\x1b[0m\n`);
           if (self.decisionResolver) self.decisionResolver(true);
           server.stop();
           return Response.json({ ok: true });
         }
 
         if (url.pathname === "/api/cancel") {
-          console.log("\nUser cancelled operation");
+          console.log(`\n  \x1b[31mCancelled\x1b[0m\n`);
           if (self.decisionResolver) self.decisionResolver(false);
           server.stop();
           return Response.json({ ok: true });
@@ -511,15 +518,15 @@ export class WebUIPlugin implements Plugin {
       },
     });
 
-    console.log(`Server running on http://localhost:${this.config.port}`);
+    console.log(`Server running on port ${this.config.port}`);
     this.serverProcess = server;
   }
 
-  private openBrowser() {
-    const url = `http://localhost:${this.config.port}`;
+  private openBrowser(url?: string) {
+    const target = url ?? `http://localhost:${this.config.port}`;
     const platform = process.platform;
     const command = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
-    spawn(command, [url], { detached: true, stdio: "ignore" }).unref();
+    spawn(command, [target], { detached: true, stdio: "ignore" }).unref();
   }
 
   private async waitForUserDecision(): Promise<boolean> {
