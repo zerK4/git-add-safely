@@ -36,6 +36,18 @@ let _watchMode = $state(false);
 let _unstagedFiles = $state<import("$lib/types").FileStatus[]>([]);
 let _selectedFileStaged = $state(true); // is the selected file staged or unstaged?
 
+// PR mode state
+let _prMode = $state(false);
+let _activePR = $state<number | null>(null);
+let _prView = $state<"code" | "conversation">("code");
+let _prData = $state<import("$lib/api/client").PRInfo | null>(null);
+let _prFiles = $state<string[]>([]);
+let _prRawDiff = $state<string | null>(null);
+let _prReviewThreads = $state<import("$lib/api/client").PRReviewThreads>({});
+let _prSelectedFile = $state<string | null>(null);
+let _prDiffLoading = $state(false);
+let _prFileStats = $state<Record<string, { added: number; removed: number }>>({});
+
 // Derived
 const _noteCountsByFile = $derived<Record<string, number>>(
   Object.keys(_notes).reduce<Record<string, number>>((map, key) => {
@@ -90,6 +102,18 @@ export const store = {
   get watchMode() { return _watchMode; },
   get unstagedFiles() { return _unstagedFiles; },
   get selectedFileStaged() { return _selectedFileStaged; },
+  // PR mode
+  get prMode() { return _prMode; },
+  get activePR() { return _activePR; },
+  get prFiles() { return _prFiles; },
+  get prRawDiff() { return _prRawDiff; },
+  get prParsedDiff() { return _prRawDiff ? parseDiff(_prRawDiff) : null; },
+  get prView() { return _prView; },
+  get prData() { return _prData; },
+  get prReviewThreads() { return _prReviewThreads; },
+  get prSelectedFile() { return _prSelectedFile; },
+  get prDiffLoading() { return _prDiffLoading; },
+  get prFileStats() { return _prFileStats; },
 };
 
 // --- Actions ---
@@ -510,4 +534,64 @@ export async function saveReviewToFile() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ file: _reviewedFile, content: review }),
   });
+}
+
+// --- PR mode actions ---
+
+export async function enterPRMode(prNumber: number, files: string[], fullDiff?: string, prData?: import("$lib/api/client").PRInfo) {
+  _prMode = true;
+  _activePR = prNumber;
+  _prView = "code";
+  _prData = prData ?? null;
+  _prFiles = files;
+  _prSelectedFile = null;
+  _prRawDiff = null;
+  // Parse per-file stats from full diff
+  if (fullDiff) {
+    const stats: Record<string, { added: number; removed: number }> = {};
+    const sections = fullDiff.split(/^(?=diff --git )/m);
+    for (const section of sections) {
+      const fileMatch = section.match(/^diff --git a\/.+? b\/(.+)$/m);
+      if (!fileMatch) continue;
+      const file = fileMatch[1];
+      const added = (section.match(/^\+[^+]/gm) ?? []).length;
+      const removed = (section.match(/^-[^-]/gm) ?? []).length;
+      stats[file] = { added, removed };
+    }
+    _prFileStats = stats;
+  } else {
+    _prFileStats = {};
+  }
+  // Load review threads
+  const { fetchPRReviewThreads } = await import("$lib/api/client");
+  _prReviewThreads = await fetchPRReviewThreads(prNumber);
+}
+
+export async function selectPRFile(file: string) {
+  if (_activePR === null) return;
+  _prSelectedFile = file;
+  _prRawDiff = null;
+  _prDiffLoading = true;
+  try {
+    const { fetchPRFileDiff } = await import("$lib/api/client");
+    _prRawDiff = await fetchPRFileDiff(_activePR, file);
+  } finally {
+    _prDiffLoading = false;
+  }
+}
+
+export function setPRView(view: "code" | "conversation") {
+  _prView = view;
+}
+
+export function exitPRMode() {
+  _prMode = false;
+  _activePR = null;
+  _prView = "code";
+  _prData = null;
+  _prFiles = [];
+  _prSelectedFile = null;
+  _prRawDiff = null;
+  _prReviewThreads = {};
+  _prFileStats = {};
 }

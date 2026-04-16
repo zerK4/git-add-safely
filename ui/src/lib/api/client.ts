@@ -173,6 +173,105 @@ export async function persistMessage(conversationId: number, role: "user" | "ass
   });
 }
 
+// --- PR info ---
+
+export interface PRAuthor {
+  login: string;
+  name?: string;
+}
+
+export interface PRComment {
+  author: PRAuthor;
+  body: string;
+  createdAt: string;
+}
+
+export interface PRReview {
+  author: PRAuthor;
+  body: string;
+  state: string;
+  createdAt?: string;
+  submittedAt?: string;
+}
+
+export interface PRReviewComment {
+  id: number;
+  inReplyToId: number | null;
+  author: string;
+  body: string;
+  createdAt: string;
+  path: string;
+  line: number | null;
+  diffHunk: string;
+  reviewId: number | null;
+}
+
+export interface PRInfo {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  url: string;
+  author: PRAuthor;
+  createdAt: string;
+  updatedAt: string;
+  baseRefName: string;
+  headRefName: string;
+  comments: PRComment[];
+  reviews: PRReview[];
+  reviewRequests: { requestedReviewer: PRAuthor }[];
+  reviewComments: PRReviewComment[];
+  diff: string;
+}
+
+export interface PRInfoResponse {
+  ghMissing?: boolean;
+  prs?: PRInfo[];
+}
+
+export async function fetchPRInfo(): Promise<PRInfoResponse> {
+  try {
+    const res = await fetch("/api/pr-info");
+    if (!res.ok) return { prs: [] };
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) return { prs: [] };
+    return res.json();
+  } catch {
+    return { prs: [] };
+  }
+}
+
+// --- PR review threads ---
+
+export type PRReviewThreads = Record<string, Record<number, PRReviewComment[]>>;
+
+export async function fetchPRFileDiff(pr: number, file: string): Promise<string> {
+  try {
+    const res = await fetch(`/api/pr-file-diff?pr=${pr}&file=${encodeURIComponent(file)}`);
+    if (!res.ok) return "";
+    return res.text();
+  } catch { return ""; }
+}
+
+export async function fetchPRReviewThreads(pr: number): Promise<PRReviewThreads> {
+  try {
+    const res = await fetch(`/api/pr-review-threads?pr=${pr}`);
+    if (!res.ok || !res.headers.get("content-type")?.includes("application/json")) return {};
+    return res.json();
+  } catch { return {}; }
+}
+
+export async function postPRReply(pr: number, commentId: number, body: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/pr-reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pr, commentId, body }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 // --- AI Settings ---
 
 export type AIProviderType = "anthropic" | "google" | "openai" | "openai-compatible";

@@ -19,6 +19,51 @@ import {
 } from "../core/history-db";
 import { getNotesForFile, getAllNotes, setNote } from "../core/notes-db";
 
+// Group raw GitHub API review comments by file → root thread line.
+function groupReviewComments(rawComments: any[]): Record<string, Record<number, any[]>> {
+  const byId = new Map<number, any>();
+  for (const c of rawComments) byId.set(c.id, c);
+
+  function rootLine(c: any): number {
+    if (!c.in_reply_to_id) return c.line ?? c.original_line ?? c.position ?? 0;
+    const parent = byId.get(c.in_reply_to_id);
+    if (!parent) return c.line ?? c.original_line ?? c.position ?? 0;
+    return rootLine(parent);
+  }
+
+  const grouped: Record<string, Record<number, any[]>> = {};
+  for (const c of rawComments) {
+    const path = c.path;
+    const line = rootLine(c);
+    if (!grouped[path]) grouped[path] = {};
+    if (!grouped[path][line]) grouped[path][line] = [];
+    grouped[path][line].push({
+      id: c.id,
+      inReplyToId: c.in_reply_to_id ?? null,
+      author: c.user?.login ?? "unknown",
+      body: c.body ?? "",
+      createdAt: c.created_at ?? "",
+      path: c.path ?? "",
+      line: c.line ?? c.original_line ?? null,
+      diffHunk: c.diff_hunk ?? "",
+      reviewId: c.pull_request_review_id ?? null,
+    });
+  }
+  return grouped;
+}
+
+function getNameWithOwner(): string {
+  const ghResult = spawnSync("gh", ["repo", "view", "--json", "nameWithOwner"], { encoding: "utf-8" });
+  try {
+    const parsed = JSON.parse(ghResult.stdout);
+    if (parsed.nameWithOwner) return parsed.nameWithOwner;
+  } catch {}
+  const remoteResult = spawnSync("git", ["remote", "get-url", "origin"], { encoding: "utf-8" });
+  const remoteUrl = remoteResult.stdout.trim();
+  const match = remoteUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
+  return match ? match[1] : "";
+}
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js":   "application/javascript",
@@ -307,6 +352,144 @@ export class WatchModeServer {
           const body = await req.json() as { conversation_id: number; role: string; content: string };
           addMessage(body.conversation_id, body.role as any, body.content);
           return Response.json({ ok: true }, { headers });
+        }
+
+        // --- PR comment (general) ---
+        if (url.pathname === "/api/pr-comment" && req.method === "POST") {
+          const body = await req.json() as { pr: number; body: string };
+          const result = spawnSync("gh", ["pr", "comment", String(body.pr), "--body", body.body], { encoding: "utf-8" });
+          return Response.json({ ok: result.status === 0, error: result.stderr?.trim() }, { headers });
+        }
+
+        // --- PR info ---
+        if (url.pathname === "/api/pr-info" && req.method === "GET") {
+          const ghCheck = spawnSync("gh", ["--version"], { encoding: "utf-8" });
+          if (ghCheck.error || ghCheck.status !== 0) {
+            return Response.json({ ghMissing: true }, { headers });
+          }
+
+          const branchResult = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf-8" });
+          const branch = branchResult.stdout.trim() || "HEAD";
+
+          const prListResult = spawnSync(
+            "gh", ["pr", "list", "--head", branch, "--json", "number,title,body,state,url,author,createdAt,updatedAt,baseRefName,headRefName"],
+            { encoding: "utf-8" }
+          );
+
+          if (prListResult.status !== 0 || !prListResult.stdout.trim()) {
+            return Response.json({ prs: [] }, { headers });
+          }
+
+          let prs: any[] = [];
+          try { prs = JSON.parse(prListResult.stdout); } catch { return Response.json({ prs: [] }, { headers }); }
+
+          if (prs.length === 0) return Response.json({ prs: [] }, { headers });
+
+          const nameWithOwner = getNameWithOwner();
+
+          const enriched = prs.map((pr: any) => {
+            const commentsResult = spawnSync(
+              "gh", ["pr", "view", String(pr.number), "--json", "comments,reviews,reviewRequests"],
+              { encoding: "utf-8" }
+            );
+            let comments: any[] = [], reviews: any[] = [], reviewRequests: any[] = [];
+            if (commentsResult.status === 0) {
+              try {
+                const data = JSON.parse(commentsResult.stdout);
+                comments = data.comments ?? [];
+                reviews = data.reviews ?? [];
+                reviewRequests = data.reviewRequests ?? [];
+              } catch {}
+            }
+
+            let reviewComments: any[] = [];
+            if (nameWithOwner) {
+              const rcResult = spawnSync(
+                "gh", ["api", `repos/${nameWithOwner}/pulls/${pr.number}/comments`, "--paginate"],
+                { encoding: "utf-8" }
+              );
+              if (rcResult.status === 0 && rcResult.stdout.trim()) {
+                try {
+                  const raw = rcResult.stdout.trim();
+                  const fixed = "[" + raw.replace(/\]\s*\[/g, ",") + "]";
+                  const flat: any[] = JSON.parse(fixed);
+                  reviewComments = flat.map((c: any) => ({
+                    id: c.id,
+                    inReplyToId: c.in_reply_to_id ?? null,
+                    author: c.user?.login ?? "unknown",
+                    body: c.body ?? "",
+                    createdAt: c.created_at ?? "",
+                    path: c.path ?? "",
+                    line: c.line ?? c.original_line ?? null,
+                    diffHunk: c.diff_hunk ?? "",
+                    reviewId: c.pull_request_review_id ?? null,
+                  }));
+                } catch {}
+              }
+            }
+
+            const diffResult = spawnSync("gh", ["pr", "diff", String(pr.number)], { encoding: "utf-8" });
+            const diff = diffResult.status === 0 ? diffResult.stdout : "";
+            return { ...pr, comments, reviews, reviewRequests, reviewComments, diff };
+          });
+
+          return Response.json({ prs: enriched }, { headers });
+        }
+
+        // --- PR reply ---
+        if (url.pathname === "/api/pr-reply" && req.method === "POST") {
+          const body = await req.json() as { pr: number; commentId: number; body: string };
+          const nameWithOwner = getNameWithOwner();
+          if (!nameWithOwner) return Response.json({ ok: false, error: "Could not get repo" }, { status: 500, headers });
+
+          const result = spawnSync("gh", [
+            "api", `repos/${nameWithOwner}/pulls/${body.pr}/comments`,
+            "--method", "POST",
+            "--field", `body=${body.body}`,
+            "--field", `in_reply_to=${body.commentId}`,
+          ], { encoding: "utf-8" });
+
+          return Response.json({ ok: result.status === 0 }, { headers });
+        }
+
+        if (url.pathname === "/api/pr-review-threads" && req.method === "GET") {
+          const prNum = url.searchParams.get("pr");
+          if (!prNum) return Response.json({}, { status: 400, headers });
+
+          const nameWithOwner = getNameWithOwner();
+          if (!nameWithOwner) return Response.json({}, { headers });
+
+          const commentsResult = spawnSync("gh", [
+            "api", `repos/${nameWithOwner}/pulls/${prNum}/comments`,
+            "--paginate",
+          ], { encoding: "utf-8" });
+
+          let rawComments: any[] = [];
+          try {
+            const raw = commentsResult.stdout.trim();
+            if (raw.startsWith("[")) {
+              const fixed = "[" + raw.replace(/\]\s*\[/g, ",") + "]";
+              rawComments = JSON.parse(fixed);
+            }
+          } catch {}
+
+          return Response.json(groupReviewComments(rawComments), { headers });
+        }
+
+        if (url.pathname === "/api/pr-file-diff" && req.method === "GET") {
+          const prNum = url.searchParams.get("pr");
+          const file = url.searchParams.get("file");
+          if (!prNum || !file) return new Response("Missing params", { status: 400, headers });
+
+          const result = spawnSync("gh", ["pr", "diff", prNum], { encoding: "utf-8" });
+          if (result.status !== 0) return new Response("", { headers: { "Content-Type": "text/plain", ...headers } });
+
+          const sections = result.stdout.split(/^(?=diff --git )/m);
+          const section = sections.find(s => s.includes(`b/${file}`) || s.includes(` b/${file}\n`));
+
+          return new Response(section ?? "", {
+            headers: { "Content-Type": "text/plain; charset=utf-8", ...headers },
+          });
         }
 
         // --- Settings ---

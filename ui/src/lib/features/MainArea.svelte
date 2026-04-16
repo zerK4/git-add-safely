@@ -1,6 +1,8 @@
 <script lang="ts">
   import { store } from "$lib/stores/app.svelte";
   import DiffView from "./DiffView.svelte";
+  import PRDiffView from "./PRDiffView.svelte";
+  import PRConversationView from "./PRConversationView.svelte";
   import WarningsPanel from "./WarningsPanel.svelte";
   import ClaudePanel from "./ClaudePanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
@@ -17,6 +19,10 @@
   {#if store.reviewAllOpen && !store.reviewAllPinned}
     <!-- Review All occupies full center -->
     <ReviewAllView />
+  {:else if store.prMode && store.prView === "conversation"}
+    <PRConversationView />
+  {:else if store.prMode && store.prSelectedFile}
+    <PRDiffView />
   {:else if store.selectedFile}
     <DiffView />
   {:else}

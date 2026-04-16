@@ -1,10 +1,13 @@
 <script lang="ts">
     import Header from "./Header.svelte";
     import Sidebar from "./Sidebar.svelte";
+    import PRPanel from "./PRPanel.svelte";
+    import IconRail from "./IconRail.svelte";
     import MainArea from "./MainArea.svelte";
     import Footer from "./Footer.svelte";
 
     let historyOpen = $state(false);
+    let activePanel = $state<"files" | "pr">("files");
     let sidebarWidth = $state(224); // w-56 = 224px default
     const MIN_WIDTH = 160;
     const MAX_WIDTH = 480;
@@ -16,7 +19,8 @@
         dragging = true;
 
         function onMove(e: MouseEvent) {
-            sidebarWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
+            // Subtract icon rail width (40px) from clientX
+            sidebarWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX - 40));
         }
         function onUp() {
             dragging = false;
@@ -30,8 +34,16 @@
 
 <Header onToggleHistory={() => (historyOpen = !historyOpen)} />
 <div class="flex flex-1 overflow-hidden">
+    <!-- Icon rail -->
+    <IconRail {activePanel} onSelect={(p) => (activePanel = p)} />
+
+    <!-- Content sidebar + drag handle -->
     <div class="flex shrink-0" style="width: {sidebarWidth}px">
-        <Sidebar />
+        {#if activePanel === "files"}
+            <Sidebar />
+        {:else}
+            <PRPanel />
+        {/if}
         <!-- Drag handle -->
         <div
             class="w-1 shrink-0 cursor-col-resize group relative z-10 -mr-px

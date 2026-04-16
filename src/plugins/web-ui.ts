@@ -36,6 +36,56 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+// Group raw GitHub API review comments by file → root thread line.
+// Replies (have in_reply_to_id) are attached to the same line as their root parent.
+function groupReviewComments(rawComments: any[]): Record<string, Record<number, any[]>> {
+  // Build id → comment map first
+  const byId = new Map<number, any>();
+  for (const c of rawComments) byId.set(c.id, c);
+
+  // Find root line for any comment (follow in_reply_to_id chain)
+  function rootLine(c: any): number {
+    if (!c.in_reply_to_id) return c.line ?? c.original_line ?? c.position ?? 0;
+    const parent = byId.get(c.in_reply_to_id);
+    if (!parent) return c.line ?? c.original_line ?? c.position ?? 0;
+    return rootLine(parent);
+  }
+
+  const grouped: Record<string, Record<number, any[]>> = {};
+  for (const c of rawComments) {
+    const path = c.path;
+    const line = rootLine(c);
+    if (!grouped[path]) grouped[path] = {};
+    if (!grouped[path][line]) grouped[path][line] = [];
+    grouped[path][line].push({
+      id: c.id,
+      inReplyToId: c.in_reply_to_id ?? null,
+      author: c.user?.login ?? "unknown",
+      body: c.body ?? "",
+      createdAt: c.created_at ?? "",
+      path: c.path ?? "",
+      line: c.line ?? c.original_line ?? null,
+      diffHunk: c.diff_hunk ?? "",
+      reviewId: c.pull_request_review_id ?? null,
+    });
+  }
+  return grouped;
+}
+
+// Extract nameWithOwner from gh CLI or git remote as fallback
+function getNameWithOwner(): string {
+  const ghResult = spawnSync("gh", ["repo", "view", "--json", "nameWithOwner"], { encoding: "utf-8" });
+  try {
+    const parsed = JSON.parse(ghResult.stdout);
+    if (parsed.nameWithOwner) return parsed.nameWithOwner;
+  } catch {}
+  // Fallback: parse from git remote URL
+  const remoteResult = spawnSync("git", ["remote", "get-url", "origin"], { encoding: "utf-8" });
+  const remoteUrl = remoteResult.stdout.trim();
+  const match = remoteUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
+  return match ? match[1] : "";
+}
+
 export class WebUIPlugin implements Plugin {
   name = "web-ui";
   version = "2.0.0";
@@ -501,6 +551,159 @@ export class WebUIPlugin implements Plugin {
 
           setNote(repoRoot, body.file, body.lineNo, body.content, authorName, authorEmail);
           return Response.json({ ok: true });
+        }
+
+        // --- PR comment (general, not inline) ---
+
+        if (url.pathname === "/api/pr-comment" && req.method === "POST") {
+          const body = await req.json() as { pr: number; body: string };
+          const result = spawnSync("gh", ["pr", "comment", String(body.pr), "--body", body.body], { encoding: "utf-8" });
+          return Response.json({ ok: result.status === 0, error: result.stderr?.trim() });
+        }
+
+        // --- PR info endpoint ---
+
+        if (url.pathname === "/api/pr-info" && req.method === "GET") {
+          // Check gh is installed
+          const ghCheck = spawnSync("gh", ["--version"], { encoding: "utf-8" });
+          if (ghCheck.error || ghCheck.status !== 0) {
+            return Response.json({ ghMissing: true });
+          }
+
+          const branchResult = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf-8" });
+          const branch = branchResult.stdout.trim() || "HEAD";
+
+          // Find open PRs for this branch
+          const prListResult = spawnSync(
+            "gh", ["pr", "list", "--head", branch, "--json", "number,title,body,state,url,author,createdAt,updatedAt,baseRefName,headRefName"],
+            { encoding: "utf-8" }
+          );
+
+          if (prListResult.status !== 0 || !prListResult.stdout.trim()) {
+            return Response.json({ prs: [] });
+          }
+
+          let prs: any[] = [];
+          try { prs = JSON.parse(prListResult.stdout); } catch { return Response.json({ prs: [] }); }
+
+          if (prs.length === 0) return Response.json({ prs: [] });
+
+          // Get repo nameWithOwner for API calls
+          const nameWithOwner = getNameWithOwner();
+
+          // Enrich each PR with comments, reviews, and review threads
+          const enriched = prs.map((pr: any) => {
+            const commentsResult = spawnSync(
+              "gh", ["pr", "view", String(pr.number), "--json", "comments,reviews,reviewRequests"],
+              { encoding: "utf-8" }
+            );
+            let comments: any[] = [];
+            let reviews: any[] = [];
+            let reviewRequests: any[] = [];
+            if (commentsResult.status === 0) {
+              try {
+                const data = JSON.parse(commentsResult.stdout);
+                comments = data.comments ?? [];
+                reviews = data.reviews ?? [];
+                reviewRequests = data.reviewRequests ?? [];
+              } catch {}
+            }
+
+            // Fetch inline review comments (code comments + replies)
+            let reviewComments: any[] = [];
+            if (nameWithOwner) {
+              const rcResult = spawnSync(
+                "gh", ["api", `repos/${nameWithOwner}/pulls/${pr.number}/comments`, "--paginate"],
+                { encoding: "utf-8" }
+              );
+              if (rcResult.status === 0 && rcResult.stdout.trim()) {
+                try {
+                  const raw = rcResult.stdout.trim();
+                  // --paginate may concat multiple arrays
+                  const fixed = "[" + raw.replace(/\]\s*\[/g, ",") + "]";
+                  const flat: any[] = JSON.parse(fixed);
+                  reviewComments = flat.map((c: any) => ({
+                    id: c.id,
+                    inReplyToId: c.in_reply_to_id ?? null,
+                    author: c.user?.login ?? "unknown",
+                    body: c.body ?? "",
+                    createdAt: c.created_at ?? "",
+                    path: c.path ?? "",
+                    line: c.line ?? c.original_line ?? null,
+                    diffHunk: c.diff_hunk ?? "",
+                    reviewId: c.pull_request_review_id ?? null,
+                  }));
+                } catch {}
+              }
+            }
+
+            // Get PR diff
+            const diffResult = spawnSync("gh", ["pr", "diff", String(pr.number)], { encoding: "utf-8" });
+            const diff = diffResult.status === 0 ? diffResult.stdout : "";
+
+            return { ...pr, comments, reviews, reviewRequests, reviewComments, diff };
+          });
+
+          return Response.json({ prs: enriched });
+        }
+
+        // --- PR reply endpoint ---
+
+        if (url.pathname === "/api/pr-reply" && req.method === "POST") {
+          const body = await req.json() as { pr: number; commentId: number; body: string };
+          const nameWithOwner = getNameWithOwner();
+          if (!nameWithOwner) return Response.json({ ok: false, error: "Could not get repo" }, { status: 500 });
+
+          const result = spawnSync("gh", [
+            "api", `repos/${nameWithOwner}/pulls/${body.pr}/comments`,
+            "--method", "POST",
+            "--field", `body=${body.body}`,
+            "--field", `in_reply_to=${body.commentId}`,
+          ], { encoding: "utf-8" });
+
+          return Response.json({ ok: result.status === 0 });
+        }
+
+        if (url.pathname === "/api/pr-review-threads" && req.method === "GET") {
+          const prNum = url.searchParams.get("pr");
+          if (!prNum) return Response.json({}, { status: 400 });
+
+          const repoResult = spawnSync("gh", ["repo", "view", "--json", "nameWithOwner"], { encoding: "utf-8" });
+          let nameWithOwner = "";
+          try { nameWithOwner = JSON.parse(repoResult.stdout).nameWithOwner; } catch {}
+          if (!nameWithOwner) return Response.json({});
+
+          const commentsResult = spawnSync("gh", [
+            "api", `repos/${nameWithOwner}/pulls/${prNum}/comments`,
+            "--paginate",
+          ], { encoding: "utf-8" });
+
+          let rawComments: any[] = [];
+          try {
+            const raw = commentsResult.stdout.trim();
+            if (raw.startsWith("[")) {
+              const fixed = "[" + raw.replace(/\]\s*\[/g, ",") + "]";
+              rawComments = JSON.parse(fixed);
+            }
+          } catch {}
+
+          return Response.json(groupReviewComments(rawComments));
+        }
+
+        if (url.pathname === "/api/pr-file-diff" && req.method === "GET") {
+          const prNum = url.searchParams.get("pr");
+          const file = url.searchParams.get("file");
+          if (!prNum || !file) return new Response("Missing params", { status: 400 });
+
+          const result = spawnSync("gh", ["pr", "diff", prNum], { encoding: "utf-8" });
+          if (result.status !== 0) return new Response("", { headers: { "Content-Type": "text/plain" } });
+
+          const sections = result.stdout.split(/^(?=diff --git )/m);
+          const section = sections.find(s => s.includes(`b/${file}`) || s.includes(` b/${file}\n`));
+
+          return new Response(section ?? "", {
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
         }
 
         // --- Settings endpoints ---
