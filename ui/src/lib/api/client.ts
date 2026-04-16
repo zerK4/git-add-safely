@@ -64,13 +64,20 @@ export async function fetchDiffStats(): Promise<Record<string, { added: number; 
 
 // --- Inline notes ---
 
-export async function fetchNotes(filePath: string): Promise<Record<string, string>> {
+export interface NoteEntry {
+  content: string;
+  authorName: string;
+  authorEmail: string;
+  gravatarHash: string;
+}
+
+export async function fetchNotes(filePath: string): Promise<Record<string, NoteEntry>> {
   const res = await fetch(`/api/notes?file=${encodeURIComponent(filePath)}`);
   if (!res.ok) return {};
   return res.json();
 }
 
-export async function fetchAllNotes(): Promise<Record<string, Record<string, string>>> {
+export async function fetchAllNotes(): Promise<Record<string, Record<string, NoteEntry>>> {
   try {
     const res = await fetch("/api/notes/all");
     if (!res.ok) return {};

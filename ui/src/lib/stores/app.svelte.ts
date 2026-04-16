@@ -1,4 +1,5 @@
 import { fetchContext, fetchDiff, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes } from "$lib/api/client";
+import type { NoteEntry } from "$lib/api/client";
 import { parseDiff, toSplitRows } from "$lib/diff/parser";
 import type { AppContext, FileStatus, ParsedDiff, SplitRow, ChatMessage } from "$lib/types";
 
@@ -10,7 +11,7 @@ let _selectedFile = $state<string | null>(null);
 let _rawDiff = $state<string | null>(null);
 let _diffLoading = $state(false);
 let _diffMode = $state<"unified" | "split">("unified");
-let _notes = $state<Record<string, string>>({});
+let _notes = $state<Record<string, NoteEntry>>({});
 let _activeNoteIndex = $state<number | null>(null);
 
 // Claude review state
@@ -85,8 +86,8 @@ export async function loadContext() {
       _diffStats = stats;
       // Populate _notes from disk so counts show without opening each file
       for (const [filePath, lineMap] of Object.entries(allNotes)) {
-        for (const [lineNo, content] of Object.entries(lineMap)) {
-          _notes[`${filePath}::${lineNo}`] = content;
+        for (const [lineNo, entry] of Object.entries(lineMap)) {
+          _notes[`${filePath}::${lineNo}`] = entry;
         }
       }
     }).catch(() => {});
@@ -112,8 +113,8 @@ export async function selectFile(path: string) {
     const [diff, remoteNotes] = await Promise.all([fetchDiff(path), fetchNotes(path)]);
     _rawDiff = diff;
     // Merge remote notes into local state (remote wins)
-    for (const [lineNo, content] of Object.entries(remoteNotes)) {
-      _notes[`${path}::${lineNo}`] = content;
+    for (const [lineNo, entry] of Object.entries(remoteNotes)) {
+      _notes[`${path}::${lineNo}`] = entry;
     }
   } catch {
     _rawDiff = null;
@@ -134,20 +135,37 @@ export function closeNoteEditor() {
   _activeNoteIndex = null;
 }
 
-export async function saveNote(lineNo: number, text: string) {
+export async function saveNote(rawIndex: number, text: string) {
   if (!_selectedFile) return;
-  const key = `${_selectedFile}::${lineNo}`;
-  if (text.trim()) {
-    _notes[key] = text;
-  } else {
-    delete _notes[key];
-  }
+  const file = _selectedFile;
+  const key = `${file}::${rawIndex}`;
   _activeNoteIndex = null;
-  await saveNoteRemote(_selectedFile, lineNo, text);
+  await saveNoteRemote(file, rawIndex, text);
+  // fetch fresh from server to get author info
+  const updated = await fetchNotes(file);
+  // rebuild entire _notes for this file
+  const next: Record<string, NoteEntry> = {};
+  // keep notes from other files
+  for (const [k, v] of Object.entries(_notes)) {
+    if (!k.startsWith(`${file}::`)) next[k] = v;
+  }
+  // add updated notes for this file
+  for (const [lineNo, entry] of Object.entries(updated)) {
+    next[`${file}::${lineNo}`] = entry;
+  }
+  _notes = next;
 }
 
-export function getNote(filePath: string, lineNo: number): string | undefined {
-  return _notes[`${filePath}::${lineNo}`];
+export async function deleteNote(rawIndex: number) {
+  if (!_selectedFile) return;
+  const key = `${_selectedFile}::${rawIndex}`;
+  delete _notes[key];
+  _activeNoteIndex = null;
+  await saveNoteRemote(_selectedFile, rawIndex, "");
+}
+
+export function getNote(filePath: string, rawIndex: number): NoteEntry | undefined {
+  return _notes[`${filePath}::${rawIndex}`];
 }
 
 export async function approve() {

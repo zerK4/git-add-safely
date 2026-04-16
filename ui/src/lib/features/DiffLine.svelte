@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Plus, MessageSquare } from "@lucide/svelte";
+  import { Plus, MessageSquare, Trash2 } from "@lucide/svelte";
   import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "$lib/components/ui/tooltip";
   import type { DiffLine } from "$lib/types";
   import InlineNote from "./InlineNote.svelte";
-  import { store, openNoteEditor, closeNoteEditor, saveNote, getNote } from "$lib/stores/app.svelte";
+  import { store, openNoteEditor, closeNoteEditor, saveNote, deleteNote, getNote } from "$lib/stores/app.svelte";
 
   let { line }: { line: DiffLine } = $props();
+  let confirmDeleteIdx = $state<number | null>(null);
 
   const bgClass = $derived(
     line.type === "add"
@@ -27,10 +28,9 @@
         : "text-muted-foreground/30"
   );
 
-  const lineNo = $derived(line.newLineNo ?? line.oldLineNo ?? line.rawIndex);
-  const isNoteOpen = $derived(store.activeNoteIndex === lineNo);
+  const isNoteOpen = $derived(store.activeNoteIndex === line.rawIndex);
   const existingNote = $derived(
-    store.selectedFile ? getNote(store.selectedFile, lineNo) : undefined
+    store.selectedFile ? getNote(store.selectedFile, line.rawIndex) : undefined
   );
 
   // Warnings that match this line (by new or old line number)
@@ -60,7 +60,7 @@
                      opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100
                      transition-all duration-150 ease-out
                      {existingNote ? '!opacity-100 !scale-100 bg-primary/30 border-primary/60' : ''}"
-              onclick={() => openNoteEditor(lineNo)}
+              onclick={() => openNoteEditor(line.rawIndex)}
             >
               {#if existingNote}
                 <MessageSquare class="size-3" />
@@ -103,18 +103,49 @@
   {/each}
 
   {#if existingNote && !isNoteOpen}
-    <div class="flex gap-2 bg-primary/5 border-b border-primary/15 px-4 py-2 pl-7">
-      <MessageSquare class="size-3 text-primary mt-0.5 shrink-0" />
-      <pre class="text-xs text-muted-foreground whitespace-pre-wrap font-sans">{existingNote}</pre>
+    {@const noteIdx = line.rawIndex}
+    <div class="flex items-start gap-2 bg-primary/5 border-b border-primary/15 px-4 py-2 pl-7">
+      {#if existingNote.gravatarHash}
+        <img src="https://www.gravatar.com/avatar/{existingNote.gravatarHash}?s=20&d=identicon" alt={existingNote.authorName} class="size-4 rounded-full shrink-0 mt-0.5" />
+      {:else}
+        <MessageSquare class="size-3 text-primary mt-0.5 shrink-0" />
+      {/if}
+      <div class="flex flex-col flex-1 min-w-0 gap-0.5">
+        {#if existingNote.authorName}
+          <span class="text-[10px] text-muted-foreground/60 font-sans">{existingNote.authorName}</span>
+        {/if}
+        <pre class="text-xs text-muted-foreground whitespace-pre-wrap font-sans">{existingNote.content}</pre>
+      </div>
+      <div class="sticky right-2 shrink-0 flex items-center gap-1.5 ml-2">
+        {#if confirmDeleteIdx === noteIdx}
+          <span class="text-xs text-destructive font-sans">Sure?</span>
+          <button
+            class="text-xs px-1.5 py-0.5 rounded bg-destructive/15 border border-destructive/40 text-destructive hover:bg-destructive/25 transition-colors font-sans"
+            onclick={() => { confirmDeleteIdx = null; deleteNote(noteIdx); }}
+          >Yes</button>
+          <button
+            class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-accent/40 transition-colors font-sans"
+            onclick={() => confirmDeleteIdx = null}
+          >No</button>
+        {:else}
+          <button
+            class="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:border-destructive/50 hover:text-destructive hover:bg-destructive/8 transition-colors font-sans"
+            onclick={() => confirmDeleteIdx = noteIdx}
+          >
+            <Trash2 class="size-3" />
+          </button>
+        {/if}
+      </div>
     </div>
   {/if}
 
   {#if isNoteOpen}
     <InlineNote
-      rawIndex={lineNo}
-      initialContent={existingNote ?? ""}
-      onSave={(text) => saveNote(lineNo, text)}
+      rawIndex={line.rawIndex}
+      initialContent={existingNote?.content ?? ""}
+      onSave={(text) => saveNote(line.rawIndex, text)}
       onCancel={closeNoteEditor}
+      onDelete={() => deleteNote(line.rawIndex)}
     />
   {/if}
 </div>

@@ -590,7 +590,10 @@ export class WebUIPlugin implements Plugin {
             writeFileSync(gitignorePath, gitignore + (gitignore.endsWith("\n") ? "" : "\n") + ".git-notes/\n");
           }
 
-          setNote(repoRoot, body.file, body.lineNo, body.content);
+          const authorName = spawnSync("git", ["config", "user.name"], { encoding: "utf-8" }).stdout.trim();
+          const authorEmail = spawnSync("git", ["config", "user.email"], { encoding: "utf-8" }).stdout.trim();
+
+          setNote(repoRoot, body.file, body.lineNo, body.content, authorName, authorEmail);
           return Response.json({ ok: true });
         }
 

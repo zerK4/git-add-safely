@@ -35,8 +35,13 @@ export function parseDiff(raw: string): ParsedDiff {
 
     const hunkMatch = HUNK_HEADER_RE.exec(line);
     if (hunkMatch) {
+      const context = line.slice(hunkMatch[0].length).trim();
+      const funcMatch = context.match(/^(\w[\w\s*]*\w)\s*\(/);
+      const headerLabel = funcMatch
+        ? `${hunkMatch[0]} ${funcMatch[1]}(...)`
+        : hunkMatch[0];
       currentHunk = {
-        header: line,
+        header: headerLabel,
         oldStart: parseInt(hunkMatch[1], 10),
         newStart: parseInt(hunkMatch[2], 10),
         lines: [],

@@ -5,6 +5,7 @@
     import { store, setDiffMode, startReview, openClaudePanel } from "$lib/stores/app.svelte";
     import DiffLine from "./DiffLine.svelte";
     import SplitDiffLine from "./SplitDiffLine.svelte";
+    import SplitColumn from "./SplitColumn.svelte";
     import WarningPhantomHunk from "./WarningPhantomHunk.svelte";
 
     const fileWarnings = $derived(
@@ -28,7 +29,7 @@
     );
 </script>
 
-<div class="flex flex-col flex-1 overflow-hidden">
+<div class="flex flex-col flex-1 overflow-hidden min-w-0">
     <!-- Toolbar -->
     <div class="flex items-center gap-3 px-4 py-2 bg-card shrink-0">
         <span class="font-mono text-xs text-muted-foreground truncate flex-1">
@@ -112,8 +113,8 @@
             No changes to display
         </div>
     {:else}
-        <div class="diff-scroll flex-1 overflow-auto bg-background">
-            <div class="min-w-max">
+        <div class="diff-scroll flex-1 overflow-auto bg-background" style="height:0">
+            <div class="{store.diffMode === 'unified' ? 'min-w-max' : 'h-full'}">
                 {#if store.diffMode === "unified"}
                     {#each store.parsedDiff.hunks as hunk}
                         <div class="flex items-center text-xs font-mono bg-primary/5 border-y border-primary/10 px-4 py-0.5 text-primary/50 select-none">
@@ -124,14 +125,24 @@
                         {/each}
                     {/each}
                 {:else if store.splitRows}
-                    {#each store.splitRows as hunkRows, i}
-                        <div class="flex items-center text-xs font-mono bg-primary/5 border-y border-primary/10 px-4 py-0.5 text-primary/50 select-none">
-                            {store.parsedDiff.hunks[i]?.header ?? ""}
+                    <div class="flex h-full">
+                        <!-- Left column -->
+                        <div class="w-1/2 overflow-x-auto border-r border-border split-col">
+                            <div class="min-w-max">
+                                {#each store.splitRows as hunkRows, i}
+                                    <SplitColumn rows={hunkRows} side="left" hunkHeader={store.parsedDiff.hunks[i]?.header ?? ""} />
+                                {/each}
+                            </div>
                         </div>
-                        {#each hunkRows as row}
-                            <SplitDiffLine {row} />
-                        {/each}
-                    {/each}
+                        <!-- Right column -->
+                        <div class="w-1/2 overflow-x-auto split-col">
+                            <div class="min-w-max">
+                                {#each store.splitRows as hunkRows, i}
+                                    <SplitColumn rows={hunkRows} side="right" hunkHeader={store.parsedDiff.hunks[i]?.header ?? ""} />
+                                {/each}
+                            </div>
+                        </div>
+                    </div>
                 {/if}
 
                 <!-- Phantom hunks: warnings on lines not visible in diff -->

@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Plus, MessageSquare } from "@lucide/svelte";
+  import { Plus, MessageSquare, Trash2 } from "@lucide/svelte";
   import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "$lib/components/ui/tooltip";
   import type { SplitRow } from "$lib/types";
   import InlineNote from "./InlineNote.svelte";
-  import { store, openNoteEditor, closeNoteEditor, saveNote, getNote } from "$lib/stores/app.svelte";
+  import { store, openNoteEditor, closeNoteEditor, saveNote, deleteNote, getNote } from "$lib/stores/app.svelte";
 
   let { row }: { row: SplitRow } = $props();
+  let confirmDeleteIdx = $state<number | null>(null);
 
   function cellBg(side: "left" | "right") {
     const line = side === "left" ? row.left : row.right;
@@ -31,10 +32,10 @@
   }
 
   const anchor = $derived(row.right ?? row.left);
-  const anchorLineNo = $derived(anchor?.newLineNo ?? anchor?.oldLineNo ?? anchor?.rawIndex ?? 0);
-  const isNoteOpen = $derived(store.activeNoteIndex === anchorLineNo);
+  const anchorRawIndex = $derived(anchor?.rawIndex ?? 0);
+  const isNoteOpen = $derived(store.activeNoteIndex === anchorRawIndex);
   const existingNote = $derived(
-    store.selectedFile ? getNote(store.selectedFile, anchorLineNo) : undefined
+    store.selectedFile ? getNote(store.selectedFile, anchorRawIndex) : undefined
   );
 
   const lineWarnings = $derived(
@@ -56,7 +57,7 @@
         {row.left?.oldLineNo ?? ""}
       </span>
       <span class="w-4 text-center py-0.5 shrink-0 select-none {prefixColor('left')}">{linePrefix('left')}</span>
-      <span class="flex-1 py-0.5 px-2 whitespace-pre">{row.left?.content ?? ""}</span>
+      <span class="py-0.5 px-2 whitespace-pre">{row.left?.content ?? ""}</span>
     </div>
 
     <!-- Right -->
@@ -65,7 +66,7 @@
         {row.right?.newLineNo ?? ""}
       </span>
       <span class="w-4 text-center py-0.5 shrink-0 select-none {prefixColor('right')}">{linePrefix('right')}</span>
-      <span class="flex-1 py-0.5 px-2 whitespace-pre">{row.right?.content ?? ""}</span>
+      <span class="py-0.5 px-2 whitespace-pre">{row.right?.content ?? ""}</span>
     </div>
 
     <!-- Note button — right edge -->
@@ -80,7 +81,7 @@
                      opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100
                      transition-all duration-150 ease-out
                      {existingNote ? '!opacity-100 !scale-100 bg-primary/30 border-primary/60' : ''}"
-              onclick={() => openNoteEditor(anchorLineNo)}
+              onclick={() => openNoteEditor(anchorRawIndex)}
             >
               {#if existingNote}
                 <MessageSquare class="size-3" />
@@ -107,18 +108,49 @@
   {/each}
 
   {#if existingNote && !isNoteOpen}
-    <div class="flex gap-2 bg-primary/5 border-b border-primary/15 px-4 py-2">
-      <MessageSquare class="size-3 text-primary mt-0.5 shrink-0" />
-      <pre class="text-xs text-muted-foreground whitespace-pre-wrap font-sans">{existingNote}</pre>
+    {@const noteIdx = anchorRawIndex}
+    <div class="flex items-start gap-2 bg-primary/5 border-b border-primary/15 px-4 py-2">
+      {#if existingNote.gravatarHash}
+        <img src="https://www.gravatar.com/avatar/{existingNote.gravatarHash}?s=20&d=identicon" alt={existingNote.authorName} class="size-4 rounded-full shrink-0 mt-0.5" />
+      {:else}
+        <MessageSquare class="size-3 text-primary mt-0.5 shrink-0" />
+      {/if}
+      <div class="flex flex-col flex-1 min-w-0 gap-0.5">
+        {#if existingNote.authorName}
+          <span class="text-[10px] text-muted-foreground/60 font-sans">{existingNote.authorName}</span>
+        {/if}
+        <pre class="text-xs text-muted-foreground whitespace-pre-wrap font-sans">{existingNote.content}</pre>
+      </div>
+      <div class="sticky right-2 shrink-0 flex items-center gap-1.5 ml-2">
+        {#if confirmDeleteIdx === noteIdx}
+          <span class="text-xs text-destructive font-sans">Sure?</span>
+          <button
+            class="text-xs px-1.5 py-0.5 rounded bg-destructive/15 border border-destructive/40 text-destructive hover:bg-destructive/25 transition-colors font-sans"
+            onclick={() => { confirmDeleteIdx = null; deleteNote(noteIdx); }}
+          >Yes</button>
+          <button
+            class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-accent/40 transition-colors font-sans"
+            onclick={() => confirmDeleteIdx = null}
+          >No</button>
+        {:else}
+          <button
+            class="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:border-destructive/50 hover:text-destructive hover:bg-destructive/8 transition-colors font-sans"
+            onclick={() => confirmDeleteIdx = noteIdx}
+          >
+            <Trash2 class="size-3" />
+          </button>
+        {/if}
+      </div>
     </div>
   {/if}
 
   {#if isNoteOpen}
     <InlineNote
-      rawIndex={anchorLineNo}
-      initialContent={existingNote ?? ""}
-      onSave={(text) => saveNote(anchorLineNo, text)}
+      rawIndex={anchorRawIndex}
+      initialContent={existingNote?.content ?? ""}
+      onSave={(text) => saveNote(anchorRawIndex, text)}
       onCancel={closeNoteEditor}
+      onDelete={() => deleteNote(anchorRawIndex)}
     />
   {/if}
 </div>

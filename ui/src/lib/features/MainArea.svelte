@@ -12,7 +12,7 @@
   } = $props();
 </script>
 
-<main class="flex-1 flex overflow-hidden">
+<main class="flex-1 flex overflow-hidden min-w-0">
   <!-- Main content area -->
   {#if store.reviewAllOpen && !store.reviewAllPinned}
     <!-- Review All occupies full center -->
