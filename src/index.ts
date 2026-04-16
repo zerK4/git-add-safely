@@ -64,6 +64,17 @@ async function main() {
     await pluginLoader.registerPlugin(new WebUIPlugin());
   }
 
+  // Detect repo root
+  const repoRootResult = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+    encoding: "utf-8",
+  });
+  const repoRoot = repoRootResult.stdout.trim();
+
+  if (!repoRoot) {
+    console.error("❌ Not inside a git repository.");
+    process.exit(1);
+  }
+
   // Run git add first
   const gitArgs = args.filter((a) => !a.startsWith("--"));
   const addResult = spawnSync("git", ["add", ...gitArgs], { stdio: "inherit" });
@@ -91,17 +102,42 @@ async function main() {
     process.exit(0);
   }
 
-  console.log("\nStaged files:");
-  console.log(stagedFiles.join("\n"));
-  console.log("\nScanning for sensitive information...");
+  // Get file statuses early so we can show them in terminal
+  const fileStatuses = scanner.getFileStatuses(stagedFiles);
+
+  const statusSymbol: Record<string, string> = {
+    added:    "\x1b[32m  A\x1b[0m",
+    modified: "\x1b[33m  M\x1b[0m",
+    deleted:  "\x1b[31m  D\x1b[0m",
+    renamed:  "\x1b[36m  R\x1b[0m",
+  };
+
+  const added    = fileStatuses.filter((f) => f.status === "added").length;
+  const modified = fileStatuses.filter((f) => f.status === "modified").length;
+  const deleted  = fileStatuses.filter((f) => f.status === "deleted").length;
+  const renamed  = fileStatuses.filter((f) => f.status === "renamed").length;
+
+  console.log("\n\x1b[1mStaged files:\x1b[0m");
+  for (const f of fileStatuses) {
+    const sym = statusSymbol[f.status] ?? "  ?";
+    console.log(`${sym}  ${f.path}`);
+  }
+
+  const parts = [];
+  if (added)    parts.push(`\x1b[32m${added} added\x1b[0m`);
+  if (modified) parts.push(`\x1b[33m${modified} modified\x1b[0m`);
+  if (deleted)  parts.push(`\x1b[31m${deleted} deleted\x1b[0m`);
+  if (renamed)  parts.push(`\x1b[36m${renamed} renamed\x1b[0m`);
+  console.log(`\n  ${parts.join("  ·  ")}\n`);
+
+  console.log("Scanning for sensitive information...");
 
   // Execute beforeScan hooks
   const filesToScan = await pluginLoader.executeBeforeScan(stagedFiles);
 
   // Scan for secrets
   const { sensitiveFiles, scanResults } =
-    await scanner.scanFiles(filesToScan);
-  const fileStatuses = scanner.getFileStatuses(stagedFiles);
+    await scanner.scanFiles(filesToScan, repoRoot);
 
   // Create plugin context
   const context: PluginContext = {

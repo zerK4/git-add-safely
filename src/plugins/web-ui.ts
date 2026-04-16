@@ -110,208 +110,397 @@ export class WebUIPlugin implements Plugin {
       .replace(/'/g, "&#039;");
   }
 
+  // SVG icons as HTML strings — no emoji, no encoding issues
+  private readonly icons = {
+    warn: `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575ZM8 5a.75.75 0 0 0-.75.75v2.5a.75.75 0 0 0 1.5 0v-2.5A.75.75 0 0 0 8 5Zm1 6a1 1 0 1 0-2 0 1 1 0 0 0 2 0Z"/></svg>`,
+    check: `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>`,
+    x: `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`,
+    checkLg: `<svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>`,
+    xLg: `<svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`,
+  } as const;
+
   private generateHTML(context: PluginContext): string {
-    const files = context.stagedFiles
-      .map(
-        (f) => `
-      <div class="file-item">
-        <div class="file-header">
-          <span class="status-badge status-${f.status}">${f.status}</span>
-          <span class="file-path">${this.escapeHtml(f.path)}</span>
-        </div>
-      </div>
-    `,
-      )
+    const statusMeta: Record<string, { label: string; color: string; dot: string }> = {
+      added:    { label: "A", color: "#3fb950", dot: "#3fb950" },
+      modified: { label: "M", color: "#d29922", dot: "#d29922" },
+      deleted:  { label: "D", color: "#f85149", dot: "#f85149" },
+      renamed:  { label: "R", color: "#79c0ff", dot: "#79c0ff" },
+    };
+
+    const countByStatus = (status: string) =>
+      context.stagedFiles.filter((f) => f.status === status).length;
+
+    const statsHtml = ["added", "modified", "deleted", "renamed"]
+      .filter((s) => countByStatus(s) > 0)
+      .map((s) => {
+        const m = statusMeta[s];
+        return `<span class="stat" style="color:${m.color}"><span class="stat-dot" style="background:${m.dot}"></span>${countByStatus(s)} ${s}</span>`;
+      })
       .join("");
 
-    const warnings = context.scanResults
-      .map(
-        (r) => `
-      <div class="warning-item">
-        <div class="warning-header">
-          <span class="warning-icon">⚠️</span>
-          <span class="warning-pattern">${this.escapeHtml(r.pattern)}</span>
-        </div>
-        <div class="warning-details">
-          <span class="warning-file">${this.escapeHtml(r.file)}:${r.line}</span>
-          <pre class="warning-content">${this.escapeHtml(r.content)}</pre>
-        </div>
-      </div>
-    `,
-      )
+    const groupedFiles: Record<string, typeof context.stagedFiles> = {};
+    for (const f of context.stagedFiles) {
+      const parts = f.path.split("/");
+      const dir = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+      if (!groupedFiles[dir]) groupedFiles[dir] = [];
+      groupedFiles[dir].push(f);
+    }
+
+    const filesHtml = Object.entries(groupedFiles)
+      .map(([dir, files]) => {
+        const filesRows = files.map((f) => {
+          const m = statusMeta[f.status] ?? { label: "?", color: "#8b949e", dot: "#8b949e" };
+          const filename = f.path.split("/").pop() ?? f.path;
+          const sensitiveFile = context.scanResults.some((r) => r.file === f.path);
+          return `
+            <div class="file-row${sensitiveFile ? " file-sensitive" : ""}">
+              <span class="file-status" style="color:${m.color}">${m.label}</span>
+              <span class="file-name">${this.escapeHtml(filename)}</span>
+              ${sensitiveFile ? `<span class="file-warn-badge">${this.icons.warn} sensitive</span>` : ""}
+            </div>`;
+        }).join("");
+
+        return `
+          <div class="file-group">
+            ${dir ? `<div class="file-dir">${this.escapeHtml(dir)}/</div>` : ""}
+            ${filesRows}
+          </div>`;
+      })
       .join("");
 
-    return `
-<!DOCTYPE html>
+    const warningsHtml = context.scanResults.map((r) => `
+      <div class="warning-card">
+        <div class="warning-top">
+          <span class="warning-tag">${this.escapeHtml(r.pattern)}</span>
+          <span class="warning-loc">${this.escapeHtml(r.file)}:${r.line}</span>
+        </div>
+        <pre class="warning-code">${this.escapeHtml(r.content)}</pre>
+      </div>`).join("");
+
+    const hasWarnings = context.scanResults.length > 0;
+    const badgeHtml = hasWarnings
+      ? `<span class="header-badge header-badge--warn">${this.icons.warn} ${context.scanResults.length} warning${context.scanResults.length !== 1 ? "s" : ""}</span>`
+      : `<span class="header-badge header-badge--ok">${this.icons.check} No issues found</span>`;
+
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>git-add-safely - Review Changes</title>
+  <title>git-add-safely</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #1c2128;
+      --border: #30363d;
+      --border2: #21262d;
+      --text: #e6edf3;
+      --text-muted: #7d8590;
+      --blue: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --orange: #e3b341;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0d1117;
-      color: #c9d1d9;
-      padding: 2rem;
-      line-height: 1.6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
     }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
-      color: #58a6ff;
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100vh;
     }
-    .subtitle {
-      color: #8b949e;
-      margin-bottom: 2rem;
-    }
-    .section {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    .section-title {
-      font-size: 1.25rem;
-      margin-bottom: 1rem;
-      color: #f0f6fc;
-    }
-    .file-item {
-      padding: 0.75rem;
-      border-bottom: 1px solid #21262d;
-    }
-    .file-item:last-child { border-bottom: none; }
-    .file-header {
+
+    /* Header */
+    .header {
+      grid-column: 1 / -1;
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
     }
-    .status-badge {
-      padding: 0.25rem 0.5rem;
-      border-radius: 3px;
-      font-size: 0.75rem;
+    .header-logo {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+    .header-logo span { color: var(--blue); }
+    .header-sep { color: var(--border); margin: 0 2px; }
+    .header-sub { color: var(--text-muted); font-size: 13px; }
+    .header-badge {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+    .header-badge--warn {
+      background: rgba(248,81,73,0.12);
+      color: var(--red);
+      border: 1px solid rgba(248,81,73,0.3);
+    }
+    .header-badge--ok {
+      background: rgba(63,185,80,0.12);
+      color: var(--green);
+      border: 1px solid rgba(63,185,80,0.3);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow-y: auto;
+      padding: 16px 0;
+    }
+    .sidebar-section-title {
+      font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      padding: 0 16px 8px;
     }
-    .status-added { background: #238636; color: #fff; }
-    .status-modified { background: #1f6feb; color: #fff; }
-    .status-deleted { background: #da3633; color: #fff; }
-    .file-path {
-      font-family: ui-monospace, monospace;
-      color: #58a6ff;
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 16px 16px;
     }
-    .warning-item {
-      padding: 1rem;
-      background: #271d1b;
-      border: 1px solid #bd561d;
-      border-radius: 6px;
-      margin-bottom: 1rem;
+    .stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 500;
     }
-    .warning-item:last-child { margin-bottom: 0; }
-    .warning-header {
+    .stat-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .file-group { padding: 0 0 8px; }
+    .file-dir {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 4px 16px 2px;
+      font-family: ui-monospace, "SF Mono", monospace;
+    }
+    .file-row {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
+      gap: 8px;
+      padding: 4px 16px;
+      cursor: default;
+      transition: background 0.1s;
     }
-    .warning-pattern {
-      font-weight: 600;
-      color: #f85149;
-    }
-    .warning-file {
+    .file-row:hover { background: var(--surface2); }
+    .file-row.file-sensitive { background: rgba(248,81,73,0.05); }
+    .file-row.file-sensitive:hover { background: rgba(248,81,73,0.1); }
+    .file-status {
+      font-size: 11px;
+      font-weight: 700;
       font-family: ui-monospace, monospace;
-      color: #8b949e;
-      font-size: 0.875rem;
+      width: 14px;
+      flex-shrink: 0;
     }
-    .warning-content {
-      margin-top: 0.5rem;
-      padding: 0.75rem;
-      background: #0d1117;
-      border-radius: 3px;
-      overflow-x: auto;
-      font-size: 0.875rem;
+    .file-name {
+      font-family: ui-monospace, "SF Mono", monospace;
+      font-size: 12.5px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    .actions {
+    .file-warn-badge {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--orange);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Main content */
+    .main {
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .empty-state {
       display: flex;
-      gap: 1rem;
-      margin-top: 2rem;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: var(--text-muted);
+      gap: 8px;
+    }
+    .empty-state svg { color: var(--green); }
+
+    .warnings-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--red);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .warning-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--red);
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .warning-card:last-child { margin-bottom: 0; }
+    .warning-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .warning-tag {
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(248,81,73,0.15);
+      color: var(--red);
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+    .warning-loc {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .warning-code {
+      font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+      font-size: 12px;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      padding: 8px 12px;
+      overflow-x: auto;
+      color: var(--orange);
+      white-space: pre;
+    }
+
+    /* Footer / Actions */
+    .footer {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .footer-info {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-right: auto;
     }
     button {
-      padding: 0.75rem 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
       border: none;
       border-radius: 6px;
-      font-size: 1rem;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: opacity 0.15s, transform 0.1s;
     }
-    .btn-approve {
-      background: #238636;
-      color: #fff;
-    }
-    .btn-approve:hover { background: #2ea043; }
+    button:active { transform: scale(0.98); }
+    .btn-approve { background: var(--green); color: #fff; }
+    .btn-approve:hover { opacity: 0.88; }
     .btn-cancel {
-      background: #21262d;
-      color: #c9d1d9;
-      border: 1px solid #30363d;
+      background: var(--surface2);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
     }
-    .btn-cancel:hover { background: #30363d; }
-    .empty {
-      color: #8b949e;
-      font-style: italic;
+    .btn-cancel:hover { background: var(--border); color: var(--text); }
+
+    .done-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 15px;
     }
+    .done-screen .done-title { font-size: 20px; font-weight: 600; color: var(--text); }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🔍 git-add-safely</h1>
-    <p class="subtitle">Review your changes before committing</p>
+  <div class="layout">
+    <header class="header">
+      <div class="header-logo">git<span>-add-safely</span></div>
+      <span class="header-sep">/</span>
+      <span class="header-sub">Review staged changes</span>
+      ${badgeHtml}
+    </header>
 
-    <div class="section">
-      <h2 class="section-title">📁 Staged Files (${context.stagedFiles.length})</h2>
-      ${files || '<p class="empty">No files staged</p>'}
-    </div>
+    <aside class="sidebar">
+      <div class="sidebar-section-title">Files &middot; ${context.stagedFiles.length}</div>
+      <div class="stats-row">${statsHtml}</div>
+      <div class="file-list">${filesHtml || '<p style="padding:0 16px;color:var(--text-muted);font-size:12px">No files</p>'}</div>
+    </aside>
 
-    ${
-      context.scanResults.length > 0
-        ? `
-    <div class="section">
-      <h2 class="section-title">⚠️ Warnings (${context.scanResults.length})</h2>
-      ${warnings}
-    </div>
-    `
-        : ""
-    }
+    <main class="main">
+      ${hasWarnings
+        ? `<div class="warnings-title">${this.icons.warn} Potential secrets detected</div>${warningsHtml}`
+        : `<div class="empty-state"><div>${this.icons.checkLg}</div><div>No sensitive patterns found</div></div>`
+      }
+    </main>
 
-    <div class="actions">
-      <button class="btn-approve" onclick="approve()">
-        ✓ Approve & Continue
-      </button>
-      <button class="btn-cancel" onclick="cancel()">
-        ✗ Cancel
-      </button>
-    </div>
+    <footer class="footer">
+      <span class="footer-info">${context.stagedFiles.length} file${context.stagedFiles.length !== 1 ? "s" : ""} staged${hasWarnings ? ` &middot; ${context.scanResults.length} warning${context.scanResults.length !== 1 ? "s" : ""}` : ""}</span>
+      <button class="btn-cancel" onclick="cancel()">${this.icons.x} Cancel</button>
+      <button class="btn-approve" onclick="approve()">${this.icons.check} Approve &amp; Continue</button>
+    </footer>
   </div>
 
   <script>
     async function approve() {
       await fetch('/api/approve', { method: 'POST' });
-      document.body.innerHTML = '<div style="text-align:center;margin-top:5rem;"><h1>✅ Approved!</h1><p>You can close this window.</p></div>';
-      setTimeout(() => window.close(), 2000);
+      document.body.innerHTML = '<div class="done-screen"><div style="color:var(--green)">${this.icons.checkLg}</div><div class="done-title">Approved</div><div>You can close this window.</div></div>';
+      setTimeout(() => window.close(), 1800);
     }
-
     async function cancel() {
       await fetch('/api/cancel', { method: 'POST' });
-      document.body.innerHTML = '<div style="text-align:center;margin-top:5rem;"><h1>❌ Cancelled</h1><p>You can close this window.</p></div>';
-      setTimeout(() => window.close(), 2000);
+      document.body.innerHTML = '<div class="done-screen"><div style="color:var(--red)">${this.icons.xLg}</div><div class="done-title">Cancelled</div><div>You can close this window.</div></div>';
+      setTimeout(() => window.close(), 1800);
     }
   </script>
 </body>
-</html>
-    `;
+</html>`;
   }
 
   private openBrowser() {
