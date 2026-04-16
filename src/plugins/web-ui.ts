@@ -21,6 +21,8 @@ import { streamAIResponse } from "../core/ai-runner";
 interface WebUIConfig {
   autoOpen?: boolean;
   port?: number;
+  noDomain?: boolean;
+  httpOnly?: boolean;
 }
 
 const MIME: Record<string, string> = {
@@ -46,11 +48,18 @@ export class WebUIPlugin implements Plugin {
   private serverProcess: any = null;
   private decisionResolver: ((value: boolean) => void) | null = null;
   private hostname: string = "";
+  private cliOverrides: Partial<WebUIConfig> = {};
+
+  setCliOverrides(overrides: Partial<WebUIConfig>) {
+    this.cliOverrides = overrides;
+  }
 
   async init(config?: WebUIConfig) {
     if (config) {
       this.config = { ...this.config, ...config };
     }
+    // CLI flags always win over file config
+    this.config = { ...this.config, ...this.cliOverrides };
   }
 
   hooks = {
@@ -59,18 +68,25 @@ export class WebUIPlugin implements Plugin {
         return context;
       }
 
-      const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
-      const projectName = repoResult.stdout.trim().split("/").pop() ?? "project";
-      this.hostname = buildHostname(projectName);
       if (!this.config.port) {
         this.config.port = await findFreePort();
       }
-      ensureHostsEntry(this.hostname);
-      await ensureProxyRunning();
-      registerRoute(this.hostname, this.config.port, process.pid);
 
-      const scheme = certsExist() ? "https" : "http";
-      const uiUrl = `${scheme}://${this.hostname}`;
+      let uiUrl: string;
+      if (this.config.noDomain) {
+        uiUrl = `http://127.0.0.1:${this.config.port}`;
+      } else {
+        const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+        const projectName = repoResult.stdout.trim().split("/").pop() ?? "project";
+        this.hostname = buildHostname(projectName);
+        ensureHostsEntry(this.hostname);
+        if (!this.config.httpOnly) {
+          await ensureProxyRunning();
+        }
+        registerRoute(this.hostname, this.config.port, process.pid);
+        const scheme = !this.config.httpOnly && certsExist() ? "https" : "http";
+        uiUrl = `${scheme}://${this.hostname}`;
+      }
       console.log(`\x1b[2m  url\x1b[0m    \x1b[36m\x1b[4m${uiUrl}\x1b[0m`);
 
       await this.startServer(context);
@@ -528,7 +544,6 @@ export class WebUIPlugin implements Plugin {
       },
     });
 
-    console.log(`Server running on port ${this.config.port}`);
     this.serverProcess = server;
   }
 

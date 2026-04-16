@@ -30,6 +30,12 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+export interface WatchModeOptions {
+  noDomain?: boolean;
+  httpOnly?: boolean;
+  port?: number;
+}
+
 export class WatchModeServer {
   private repoRoot: string;
   private watcher: GitWatcher;
@@ -37,22 +43,32 @@ export class WatchModeServer {
   private sseClients = new Set<ReadableStreamDefaultController>();
   private hostname: string = "";
   private port: number = 0;
+  private options: WatchModeOptions;
 
-  constructor(repoRoot: string) {
+  constructor(repoRoot: string, options: WatchModeOptions = {}) {
     this.repoRoot = repoRoot;
     this.watcher = new GitWatcher();
     this.scanner = new SecretScanner();
+    this.options = options;
   }
 
   async start() {
     const repoName = this.repoRoot.split("/").pop() ?? "unknown";
-    this.hostname = buildHostname(repoName);
-    this.port = await findFreePort();
-    ensureHostsEntry(this.hostname);
-    await ensureProxyRunning();
-    registerRoute(this.hostname, this.port, process.pid);
-    const scheme = certsExist() ? "https" : "http";
-    const uiUrl = `${scheme}://${this.hostname}`;
+    this.port = this.options.port ?? await findFreePort();
+
+    let uiUrl: string;
+    if (this.options.noDomain) {
+      uiUrl = `http://127.0.0.1:${this.port}`;
+    } else {
+      this.hostname = buildHostname(repoName);
+      ensureHostsEntry(this.hostname);
+      if (!this.options.httpOnly) {
+        await ensureProxyRunning();
+      }
+      registerRoute(this.hostname, this.port, process.pid);
+      const scheme = !this.options.httpOnly && certsExist() ? "https" : "http";
+      uiUrl = `${scheme}://${this.hostname}`;
+    }
     console.log(`\n\x1b[1m\x1b[35mgit-add-safely\x1b[0m  \x1b[2mwatch mode\x1b[0m`);
     console.log(`\x1b[2m  repo\x1b[0m   ${repoName}`);
 

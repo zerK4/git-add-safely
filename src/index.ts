@@ -22,17 +22,22 @@ Usage:
   git-add-safely --watch
 
 Options:
-  --force     Skip all security checks
-  --no-ui     Disable web UI (use CLI only)
-  --watch     Watch mode — live UI for staging/unstaging files
-  --help      Show this help message
+  --force       Skip all security checks
+  --no-ui       Disable web UI (use CLI only)
+  --watch       Watch mode — live UI for staging/unstaging files
+  --no-domain   Skip custom domain setup, use 127.0.0.1:<port> directly
+  --http-only   Skip HTTPS/proxy setup, use plain HTTP with custom domain
+  --port <n>    Use specific port instead of random
+  --help        Show this help message
 
 Examples:
   git-add-safely .                    # Add all files with safety checks
   git-add-safely src/config.ts        # Add specific file
   git-add-safely . --force            # Skip all checks
   git-add-safely . --no-ui            # CLI mode only
-  git-add-safely --watch              # Watch mode
+  git-add-safely --watch              # Watch mode (https://project.git.studio)
+  git-add-safely --watch --no-domain  # Watch mode (http://127.0.0.1:PORT)
+  git-add-safely --watch --http-only  # Watch mode (http://project.git.studio)
 
 Configuration:
   Create a .git-safely.json file in your project root to configure plugins:
@@ -57,13 +62,32 @@ if (args.includes("--watch")) {
     console.error("\x1b[31m  error  Not inside a git repository.\x1b[0m");
     process.exit(1);
   }
-  const server = new WatchModeServer(repoRoot);
+  const portArg = args.indexOf("--port");
+  const port = portArg !== -1 ? parseInt(args[portArg + 1], 10) : undefined;
+  if (port !== undefined && (isNaN(port) || port < 1 || port > 65535)) {
+    console.error("\x1b[31m  error  --port must be a valid port number (1-65535)\x1b[0m");
+    process.exit(1);
+  }
+  const server = new WatchModeServer(repoRoot, {
+    noDomain: args.includes("--no-domain"),
+    httpOnly: args.includes("--http-only"),
+    port,
+  });
+
   await server.start();
   process.exit(0);
 }
 
 const force = args.includes("--force");
 const ui = args.includes("--ui");
+const noDomain = args.includes("--no-domain");
+const httpOnly = args.includes("--http-only");
+const portArgIdx = args.indexOf("--port");
+const portFlag = portArgIdx !== -1 ? parseInt(args[portArgIdx + 1], 10) : undefined;
+if (portFlag !== undefined && (isNaN(portFlag) || portFlag < 1 || portFlag > 65535)) {
+  console.error("\x1b[31m  error  --port must be a valid port number (1-65535)\x1b[0m");
+  process.exit(1);
+}
 
 if (args.length === 0 || args.every((arg) => arg.startsWith("--"))) {
   console.error("\x1b[33m  warn   Please specify what to add (e.g., . or file name)\x1b[0m");
@@ -77,7 +101,11 @@ async function main() {
 
   // Register plugins
   if (ui) {
-    await pluginLoader.registerPlugin(new WebUIPlugin());
+    const webUiPlugin = new WebUIPlugin();
+    // CLI flags passed separately — registerPlugin will merge with .git-safely.json,
+    // but CLI must win. We store them and apply after registerPlugin calls init().
+    webUiPlugin.setCliOverrides({ noDomain, httpOnly, port: portFlag });
+    await pluginLoader.registerPlugin(webUiPlugin);
   }
 
   // Detect repo root
@@ -91,8 +119,15 @@ async function main() {
     process.exit(1);
   }
 
-  // Run git add first
-  const gitArgs = args.filter((a) => !a.startsWith("--"));
+  // Run git add first — strip our own flags (including --port <value>)
+  const OWN_FLAGS = new Set(["--force", "--ui", "--no-ui", "--no-domain", "--http-only", "--watch"]);
+  const OWN_FLAGS_WITH_VALUE = new Set(["--port"]);
+  const gitArgs: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (OWN_FLAGS.has(args[i])) continue;
+    if (OWN_FLAGS_WITH_VALUE.has(args[i])) { i++; continue; }
+    gitArgs.push(args[i]);
+  }
   const addResult = spawnSync("git", ["add", ...gitArgs], { stdio: "inherit" });
 
   if (addResult.status !== 0) {
