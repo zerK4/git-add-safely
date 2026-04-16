@@ -94,6 +94,7 @@ export const store = {
   get reviewAllPinned() { return _reviewAllPinned; },
   get diffStats() { return _diffStats; },
   get noteCountsByFile() { return _noteCountsByFile; },
+  get notes() { return _notes; },
   // Settings
   get settingsOpen() { return _settingsOpen; },
   get settings() { return _settings; },

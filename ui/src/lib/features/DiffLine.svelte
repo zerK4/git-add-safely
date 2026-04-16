@@ -61,29 +61,33 @@
   );
 </script>
 
-<div class="group">
+<div class="group" data-rawindex={line.rawIndex}>
+  <!-- Outer row: full viewport width, no overflow -->
   <div class="flex items-stretch text-xs font-mono {bgClass} transition-colors">
 
-    <!-- Line numbers -->
-    <div class="flex shrink-0 select-none">
-      {#if store.diffLineNumbers === 2}
+    <!-- Scrollable content: line numbers + prefix + code -->
+    <div class="flex items-stretch overflow-x-auto flex-1 min-w-0">
+      <!-- Line numbers -->
+      <div class="flex shrink-0 select-none">
+        {#if store.diffLineNumbers === 2}
+          <span class="w-9 text-right pr-2 py-0.5 text-muted-foreground/30 border-r border-border">
+            {line.oldLineNo ?? ""}
+          </span>
+        {/if}
         <span class="w-9 text-right pr-2 py-0.5 text-muted-foreground/30 border-r border-border">
-          {line.oldLineNo ?? ""}
+          {line.newLineNo ?? ""}
         </span>
-      {/if}
-      <span class="w-9 text-right pr-2 py-0.5 text-muted-foreground/30 border-r border-border">
-        {line.newLineNo ?? ""}
-      </span>
+      </div>
+
+      <!-- Prefix -->
+      <span class="w-5 text-center py-0.5 shrink-0 select-none {prefixColor}">{linePrefix}</span>
+
+      <!-- Content -->
+      <span class="py-0.5 px-2 whitespace-pre">{line.content}</span>
     </div>
 
-    <!-- Prefix -->
-    <span class="w-5 text-center py-0.5 shrink-0 select-none {prefixColor}">{linePrefix}</span>
-
-    <!-- Content -->
-    <span class="py-0.5 px-2 whitespace-pre flex-1">{line.content}</span>
-
-    <!-- Note button — sticky right, visible on hover -->
-    <div class="flex items-center pr-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+    <!-- Note button — outside scroll, always visible at right -->
+    <div class="flex items-center px-1.5 shrink-0">
       <TooltipProvider delayDuration={500}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -91,7 +95,9 @@
               class="flex items-center justify-center w-5 h-5 rounded
                      bg-primary/20 border border-primary/40 text-primary
                      hover:bg-primary/35 hover:border-primary/60
-                     {existingNote ? '!opacity-100 bg-primary/30 border-primary/60' : ''}"
+                     opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100
+                     transition-all duration-150 ease-out
+                     {existingNote ? '!opacity-100 !scale-100 bg-primary/30 border-primary/60' : ''}"
               onclick={() => openNoteEditor(line.rawIndex)}
             >
               {#if existingNote}

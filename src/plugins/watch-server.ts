@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, extname } from "node:path";
 import { buildHostname, ensureHostsEntry } from "../core/hosts-manager";
 import { findFreePort, registerRoute, unregisterRoute } from "../core/proxy-registry";
@@ -551,6 +551,148 @@ export class WatchModeServer {
           return new Response(result.stdout, {
             headers: { "Content-Type": "text/plain; charset=utf-8", ...headers },
           });
+        }
+
+        // --- Claude review endpoints ---
+
+        if (url.pathname === "/api/review" && req.method === "POST") {
+          const body = await req.json() as {
+            file: string;
+            diff: string;
+            warnings: { line: number; pattern: string; content: string }[];
+            warningsSummary: string;
+          };
+
+          const warningsSection = body.warnings.length > 0
+            ? `\n\nSecurity warnings already detected by the scanner:\n${body.warnings.map(w => `- Line ${w.line}: ${w.pattern} — \`${w.content}\``).join("\n")}`
+            : "";
+
+          const fileNotes = getNotesForFile(self.repoRoot, body.file);
+          const notesEntries = Object.entries(fileNotes);
+          const notesSection = notesEntries.length > 0
+            ? `\n\nInline review notes left by the developer on specific lines:\n${notesEntries.map(([lineNo, n]) => `- Line ${lineNo}: ${n.content}`).join("\n")}`
+            : "";
+
+          const prompt = `/code-review Review the following staged diff for file \`${body.file}\` in the context of what is being committed.${warningsSection}${notesSection}\n\nFocus on: bugs, security issues, code quality, and whether the changes are safe to commit. Pay special attention to lines with developer notes above.\n\nDiff:\n\`\`\`diff\n${body.diff}\n\`\`\`\n\nProvide a clear, actionable review. Do not write to any files — just respond with your analysis.`;
+
+          const provider = getProviderForFeature("codeReview");
+          const stream = new ReadableStream({
+            start(controller) {
+              const enc = new TextEncoder();
+              let closed = false;
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+              }
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+              streamAIResponse(prompt, provider, self.repoRoot, send, finish);
+            },
+          });
+          return new Response(stream, {
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", ...headers },
+          });
+        }
+
+        if (url.pathname === "/api/review-all" && req.method === "POST") {
+          const body = await req.json() as { files: string[]; userNote: string };
+
+          const diffs = body.files.map((file) => {
+            const r = spawnSync("git", ["diff", "--cached", "--", file], { encoding: "utf-8" });
+            return { file, diff: r.stdout ?? "" };
+          });
+
+          const diffSection = diffs
+            .filter((d) => d.diff.trim())
+            .map((d) => {
+              const fileNotes = getNotesForFile(self.repoRoot, d.file);
+              const notesEntries = Object.entries(fileNotes);
+              const notesBlock = notesEntries.length > 0
+                ? `\nDeveloper notes for this file:\n${notesEntries.map(([lineNo, n]) => `  - Line ${lineNo}: ${n.content}`).join("\n")}\n`
+                : "";
+              return `### ${d.file}\n${notesBlock}\`\`\`diff\n${d.diff}\n\`\`\``;
+            })
+            .join("\n\n");
+
+          const userNoteSection = body.userNote?.trim()
+            ? `\n\nAdditional context from developer:\n${body.userNote}`
+            : "";
+
+          const prompt = `/code-review Review the following batch of staged changes across ${body.files.length} file(s).${userNoteSection}\n\nFor each file, identify bugs, security issues, and anything unsafe to commit. Pay special attention to lines with developer notes. Be concise — one section per file, skip files with no issues.\n\n${diffSection}`;
+
+          const provider = getProviderForFeature("codeReview");
+          const stream = new ReadableStream({
+            start(controller) {
+              const enc = new TextEncoder();
+              let closed = false;
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+              }
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+              streamAIResponse(prompt, provider, self.repoRoot, send, finish);
+            },
+          });
+          return new Response(stream, {
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", ...headers },
+          });
+        }
+
+        if (url.pathname === "/api/review-message" && req.method === "POST") {
+          const body = await req.json() as {
+            file: string;
+            messages: { role: string; content: string }[];
+          };
+
+          const history = body.messages.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n");
+          const provider = getProviderForFeature("codeReview");
+          const stream = new ReadableStream({
+            start(controller) {
+              const enc = new TextEncoder();
+              let closed = false;
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+              }
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+              streamAIResponse(history, provider, self.repoRoot, send, finish);
+            },
+          });
+          return new Response(stream, {
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", ...headers },
+          });
+        }
+
+        if (url.pathname === "/api/review-save" && req.method === "POST") {
+          const body = await req.json() as { file: string; content: string };
+          const reviewDir = join(self.repoRoot, ".reviews");
+          mkdirSync(reviewDir, { recursive: true });
+
+          const gitignorePath = join(self.repoRoot, ".gitignore");
+          let gitignore = "";
+          try { gitignore = readFileSync(gitignorePath, "utf-8"); } catch {}
+          if (!gitignore.includes(".reviews")) {
+            writeFileSync(gitignorePath, gitignore + (gitignore.endsWith("\n") ? "" : "\n") + ".reviews/\n");
+          }
+
+          const safeName = body.file.replace(/\//g, "_").replace(/[^a-zA-Z0-9._-]/g, "");
+          const outPath = join(reviewDir, `${safeName}.md`);
+          writeFileSync(outPath, body.content);
+          return Response.json({ ok: true, path: `.reviews/${safeName}.md` }, { headers });
         }
 
         // --- Settings ---

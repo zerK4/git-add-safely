@@ -237,7 +237,13 @@ export class WebUIPlugin implements Plugin {
             ? `\n\nSecurity warnings already detected by the scanner:\n${body.warnings.map(w => `- Line ${w.line}: ${w.pattern} — \`${w.content}\``).join("\n")}`
             : "";
 
-          const prompt = `/code-review Review the following staged diff for file \`${body.file}\` in the context of what is being committed.${warningsSection}\n\nFocus on: bugs, security issues, code quality, and whether the changes are safe to commit.\n\nDiff:\n\`\`\`diff\n${body.diff}\n\`\`\`\n\nProvide a clear, actionable review. Do not write to any files — just respond with your analysis.`;
+          const fileNotes = getNotesForFile(repoRoot, body.file);
+          const notesEntries = Object.entries(fileNotes);
+          const notesSection = notesEntries.length > 0
+            ? `\n\nInline review notes left by the developer on specific lines:\n${notesEntries.map(([lineNo, n]) => `- Line ${lineNo}: ${n.content}`).join("\n")}`
+            : "";
+
+          const prompt = `/code-review Review the following staged diff for file \`${body.file}\` in the context of what is being committed.${warningsSection}${notesSection}\n\nFocus on: bugs, security issues, code quality, and whether the changes are safe to commit. Pay special attention to lines with developer notes above.\n\nDiff:\n\`\`\`diff\n${body.diff}\n\`\`\`\n\nProvide a clear, actionable review. Do not write to any files — just respond with your analysis.`;
 
           const provider = getProviderForFeature("codeReview");
           const stream = new ReadableStream({
@@ -283,14 +289,21 @@ export class WebUIPlugin implements Plugin {
 
           const diffSection = diffs
             .filter((d) => d.diff.trim())
-            .map((d) => `### ${d.file}\n\`\`\`diff\n${d.diff}\n\`\`\``)
+            .map((d) => {
+              const fileNotes = getNotesForFile(repoRoot, d.file);
+              const notesEntries = Object.entries(fileNotes);
+              const notesBlock = notesEntries.length > 0
+                ? `\nDeveloper notes for this file:\n${notesEntries.map(([lineNo, n]) => `  - Line ${lineNo}: ${n.content}`).join("\n")}\n`
+                : "";
+              return `### ${d.file}\n${notesBlock}\`\`\`diff\n${d.diff}\n\`\`\``;
+            })
             .join("\n\n");
 
           const userNoteSection = body.userNote?.trim()
             ? `\n\nAdditional context from developer:\n${body.userNote}`
             : "";
 
-          const prompt = `/code-review Review the following batch of staged changes across ${body.files.length} file(s).${userNoteSection}\n\nFor each file, identify bugs, security issues, and anything unsafe to commit. Be concise — one section per file, skip files with no issues.\n\n${diffSection}`;
+          const prompt = `/code-review Review the following batch of staged changes across ${body.files.length} file(s).${userNoteSection}\n\nFor each file, identify bugs, security issues, and anything unsafe to commit. Pay special attention to lines with developer notes. Be concise — one section per file, skip files with no issues.\n\n${diffSection}`;
 
           const provider = getProviderForFeature("codeReview");
           const stream = new ReadableStream({

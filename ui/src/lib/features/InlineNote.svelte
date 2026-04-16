@@ -2,6 +2,7 @@
   import { EditorState } from "@codemirror/state";
   import { EditorView, keymap } from "@codemirror/view";
   import { defaultKeymap } from "@codemirror/commands";
+  import { Prec } from "@codemirror/state";
   import { markdown } from "@codemirror/lang-markdown";
   import { Trash2 } from "@lucide/svelte";
 
@@ -33,6 +34,10 @@
   let editorView = $state<EditorView | null>(null);
   let confirmDelete = $state(false);
 
+  function handleSave() {
+    onSave(editorView?.state.doc.toString() ?? "");
+  }
+
   const prefixColor =
     quotedPrefix === "+" ? "text-status-good" :
     quotedPrefix === "-" ? "text-destructive" :
@@ -50,6 +55,10 @@
       state: EditorState.create({
         doc: initialContent,
         extensions: [
+          Prec.highest(keymap.of([{
+            key: "Mod-Enter",
+            run: () => { handleSave(); return true; },
+          }])),
           keymap.of(defaultKeymap),
           markdown(),
           EditorView.lineWrapping,
@@ -97,7 +106,7 @@
     <!-- HEADER -->
     <div class="flex items-center gap-2 px-4 py-2.5" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
       <span class="text-xs text-muted-foreground/70 font-sans">
-        {initialContent ? "Edit comment" : "Add comment"} · Markdown supported
+        {initialContent ? "Edit comment" : "Add comment"} · Markdown supported · ⌘↵ to save
       </span>
     </div>
 
@@ -148,7 +157,7 @@
         <button
           class="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors text-primary-foreground hover:opacity-90"
           style="background: hsl(var(--primary)); border: 1px solid hsl(var(--primary) / 0.8);"
-          onclick={() => onSave(editorView?.state.doc.toString() ?? "")}
+          onclick={handleSave}
         >Save</button>
       </div>
     </div>
