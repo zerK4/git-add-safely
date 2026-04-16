@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { Files, GitPullRequest } from "@lucide/svelte";
+    import { Files, GitPullRequest, Archive } from "@lucide/svelte";
 
     interface Props {
-        activePanel: "files" | "pr";
-        onSelect: (panel: "files" | "pr") => void;
+        activePanel: "files" | "pr" | "stash";
+        onSelect: (panel: "files" | "pr" | "stash") => void;
     }
 
     let { activePanel, onSelect }: Props = $props();
@@ -30,5 +30,16 @@
         onclick={() => onSelect("pr")}
     >
         <GitPullRequest class="size-4" />
+    </button>
+
+    <button
+        class="flex items-center justify-center w-7 h-7 rounded transition-colors
+               {activePanel === 'stash'
+                 ? 'bg-primary/15 text-primary'
+                 : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/50'}"
+        title="Stashes"
+        onclick={() => onSelect("stash")}
+    >
+        <Archive class="size-4" />
     </button>
 </div>

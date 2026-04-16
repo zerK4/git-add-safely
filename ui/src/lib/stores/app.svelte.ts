@@ -536,6 +536,24 @@ export async function saveReviewToFile() {
   });
 }
 
+// --- Stash mode actions ---
+
+export async function selectStashFile(stashRef: string, filePath: string, fullDiff: string) {
+  // Extract only the section for this file from the full stash diff
+  const sections = fullDiff.split(/^(?=diff --git )/m);
+  const section = sections.find(s => s.includes(`b/${filePath}`) || s.includes(` b/${filePath}\n`));
+  _selectedFile = `${stashRef}:${filePath}`;
+  _selectedFileStaged = false;
+  _rawDiff = section ?? fullDiff;
+  _activeNoteIndex = null;
+  _diffLoading = false;
+}
+
+export function clearStashSelection() {
+  _selectedFile = null;
+  _rawDiff = null;
+}
+
 // --- PR mode actions ---
 
 export async function enterPRMode(prNumber: number, files: string[], fullDiff?: string, prData?: import("$lib/api/client").PRInfo) {

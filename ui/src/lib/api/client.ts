@@ -272,6 +272,67 @@ export async function postPRReply(pr: number, commentId: number, body: string): 
   } catch { return false; }
 }
 
+// --- Stashes ---
+
+export interface StashEntry {
+  ref: string;
+  message: string;
+  date: string;
+}
+
+export async function fetchStashes(): Promise<StashEntry[]> {
+  try {
+    const res = await fetch("/api/stashes");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.stashes ?? [];
+  } catch { return []; }
+}
+
+export async function createStash(message?: string, includeUntracked = false): Promise<{ ok: boolean; output: string }> {
+  const res = await fetch("/api/stash", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, includeUntracked }),
+  });
+  return res.json();
+}
+
+export async function applyStash(ref: string): Promise<{ ok: boolean; output: string }> {
+  const res = await fetch("/api/stash/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref }),
+  });
+  return res.json();
+}
+
+export async function popStash(ref: string): Promise<{ ok: boolean; output: string }> {
+  const res = await fetch("/api/stash/pop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref }),
+  });
+  return res.json();
+}
+
+export async function dropStash(ref: string): Promise<{ ok: boolean; output: string }> {
+  const res = await fetch("/api/stash/drop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref }),
+  });
+  return res.json();
+}
+
+export async function fetchStashDiff(ref: string): Promise<string> {
+  try {
+    const res = await fetch(`/api/stash/diff?ref=${encodeURIComponent(ref)}`);
+    if (!res.ok) return "";
+    return res.text();
+  } catch { return ""; }
+}
+
 // --- AI Settings ---
 
 export type AIProviderType = "anthropic" | "google" | "openai" | "openai-compatible";

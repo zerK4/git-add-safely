@@ -492,6 +492,67 @@ export class WatchModeServer {
           });
         }
 
+        // --- Stashes ---
+        if (url.pathname === "/api/stashes" && req.method === "GET") {
+          const result = spawnSync("git", ["stash", "list", "--format=%gd|%s|%ci"], { encoding: "utf-8" });
+          if (result.status !== 0) return Response.json({ stashes: [] }, { headers });
+          const stashes = result.stdout.trim().split("\n").filter(Boolean).map((line) => {
+            const [ref, ...rest] = line.split("|");
+            const date = rest.pop() ?? "";
+            const message = rest.join("|");
+            return { ref, message, date };
+          });
+          return Response.json({ stashes }, { headers });
+        }
+
+        if (url.pathname === "/api/stash" && req.method === "POST") {
+          const body = await req.json() as { message?: string; includeUntracked?: boolean };
+          const args = ["stash", "push"];
+          if (body.includeUntracked) args.push("-u");
+          if (body.message) args.push("-m", body.message);
+          const result = spawnSync("git", args, { encoding: "utf-8" });
+          return Response.json({
+            ok: result.status === 0,
+            output: result.stdout + result.stderr,
+          }, { headers });
+        }
+
+        if (url.pathname === "/api/stash/apply" && req.method === "POST") {
+          const body = await req.json() as { ref: string };
+          const result = spawnSync("git", ["stash", "apply", body.ref], { encoding: "utf-8" });
+          return Response.json({
+            ok: result.status === 0,
+            output: result.stdout + result.stderr,
+          }, { headers });
+        }
+
+        if (url.pathname === "/api/stash/pop" && req.method === "POST") {
+          const body = await req.json() as { ref: string };
+          const result = spawnSync("git", ["stash", "pop", body.ref], { encoding: "utf-8" });
+          return Response.json({
+            ok: result.status === 0,
+            output: result.stdout + result.stderr,
+          }, { headers });
+        }
+
+        if (url.pathname === "/api/stash/drop" && req.method === "POST") {
+          const body = await req.json() as { ref: string };
+          const result = spawnSync("git", ["stash", "drop", body.ref], { encoding: "utf-8" });
+          return Response.json({
+            ok: result.status === 0,
+            output: result.stdout + result.stderr,
+          }, { headers });
+        }
+
+        if (url.pathname === "/api/stash/diff" && req.method === "GET") {
+          const ref = url.searchParams.get("ref");
+          if (!ref) return new Response("Missing ref", { status: 400 });
+          const result = spawnSync("git", ["stash", "show", "-p", ref], { encoding: "utf-8" });
+          return new Response(result.stdout, {
+            headers: { "Content-Type": "text/plain; charset=utf-8", ...headers },
+          });
+        }
+
         // --- Settings ---
         if (url.pathname === "/api/settings" && req.method === "GET") {
           return Response.json(readSettings(), { headers });

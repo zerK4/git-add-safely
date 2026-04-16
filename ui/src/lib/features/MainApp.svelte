@@ -2,12 +2,13 @@
     import Header from "./Header.svelte";
     import Sidebar from "./Sidebar.svelte";
     import PRPanel from "./PRPanel.svelte";
+    import StashPanel from "./StashPanel.svelte";
     import IconRail from "./IconRail.svelte";
     import MainArea from "./MainArea.svelte";
     import Footer from "./Footer.svelte";
 
     let historyOpen = $state(false);
-    let activePanel = $state<"files" | "pr">("files");
+    let activePanel = $state<"files" | "pr" | "stash">("files");
     let sidebarWidth = $state(224); // w-56 = 224px default
     const MIN_WIDTH = 160;
     const MAX_WIDTH = 480;
@@ -41,8 +42,10 @@
     <div class="flex shrink-0" style="width: {sidebarWidth}px">
         {#if activePanel === "files"}
             <Sidebar />
-        {:else}
+        {:else if activePanel === "pr"}
             <PRPanel />
+        {:else}
+            <StashPanel />
         {/if}
         <!-- Drag handle -->
         <div
