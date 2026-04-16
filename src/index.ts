@@ -11,36 +11,57 @@ import { WatchModeServer } from "./plugins/watch-server";
 // Parse arguments
 const args = process.argv.slice(2);
 
+const VERSION = "0.1.0";
+
+// Handle version flag
+if (args.includes("--version") || args.includes("-v")) {
+  console.log(VERSION);
+  process.exit(0);
+}
+
 // Handle help flag
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-git-add-safely - Safe git add with secret detection
+\x1b[1m\x1b[35mgit-add-safely\x1b[0m v${VERSION}
+Git add wrapper with secret scanning and an AI code review UI.
 
-Usage:
-  git-add-safely <files> [--force] [--no-ui]
-  git-add-safely .
-  git-add-safely --watch
+\x1b[1mUsage:\x1b[0m
+  git-add-safely <files>              Scan and stage files (CLI mode)
+  git-add-safely <files> --ui         Scan and stage with web UI approval
+  git-add-safely --watch              Live review UI — stage, diff, AI review
 
-Options:
+\x1b[1mModes:\x1b[0m
+  \x1b[2m(default)\x1b[0m  Run git add, scan for secrets, prompt in terminal if found
+  \x1b[33m--ui\x1b[0m       Open web UI for visual diff review and approval before staging
+  \x1b[36m--watch\x1b[0m    Long-running UI server — browse all local changes, stage/unstage,
+             write inline review notes, trigger AI code review
+
+\x1b[1mOptions:\x1b[0m
   --force       Skip all security checks
-  --no-ui       Disable web UI (use CLI only)
-  --watch       Watch mode — live UI for staging/unstaging files
-  --no-domain   Skip custom domain setup, use 127.0.0.1:<port> directly
-  --http-only   Skip HTTPS/proxy setup, use plain HTTP with custom domain
-  --port <n>    Use specific port instead of random
-  --help        Show this help message
+  --ui          Open web UI for approval (instead of CLI prompt)
+  --watch       Watch mode — live UI at https://project.git.studio
+  --no-domain   Use http://127.0.0.1:<port> instead of custom domain
+  --http-only   Use http://project.git.studio (skip HTTPS proxy)
+  --port <n>    Use specific port (default: random free port)
+  -v, --version Show version
+  -h, --help    Show this help
 
-Examples:
-  git-add-safely .                    # Add all files with safety checks
-  git-add-safely src/config.ts        # Add specific file
-  git-add-safely . --force            # Skip all checks
-  git-add-safely . --no-ui            # CLI mode only
-  git-add-safely --watch              # Watch mode (https://project.git.studio)
-  git-add-safely --watch --no-domain  # Watch mode (http://127.0.0.1:PORT)
-  git-add-safely --watch --http-only  # Watch mode (http://project.git.studio)
+\x1b[1mExamples:\x1b[0m
+  git-add-safely .                    Scan and stage everything
+  git-add-safely src/auth.ts          Scan specific file
+  git-add-safely . --force            Skip all checks
+  git-add-safely . --ui               Visual approval in browser
+  git-add-safely --watch              Open live review UI
+  git-add-safely --watch --no-domain  Watch mode on localhost (no /etc/hosts)
+  git-add-safely --watch --port 4000  Watch mode on fixed port
 
-Configuration:
-  Create a .git-safely.json file in your project root to configure plugins:
+\x1b[1mReview notes:\x1b[0m
+  In --watch mode, click any diff line to add an inline note.
+  Notes are saved to .git-notes/ and automatically included
+  as context when you trigger an AI code review.
+
+\x1b[1mConfiguration:\x1b[0m
+  .git-safely.json in project root:
 
   {
     "plugins": {
@@ -50,6 +71,10 @@ Configuration:
       }
     }
   }
+
+\x1b[1mInstall:\x1b[0m
+  bunx git-add-safely --watch          Run without installing
+  bun install -g git-add-safely        Install globally
 `);
   process.exit(0);
 }

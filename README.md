@@ -1,56 +1,96 @@
 # git-add-safely
 
-A Git plugin that scans staged files for sensitive information (API keys, passwords, secrets) before committing.
+Git add wrapper with secret scanning and an AI code review UI.
 
-## Features
-
-- 🔍 Scans for sensitive patterns (AWS keys, API tokens, private keys, passwords, etc.)
-- 🎯 Context-aware detection to reduce false positives
-- 🧪 Smart test file handling - more lenient with test/mock data
-- ⚡ Fast scanning with detailed reporting
-- 🛡️ Prevents accidental commits of secrets
-- 🌐 **NEW!** Interactive Web UI for reviewing changes
-- 🔌 **NEW!** Plugin system - extend with custom functionality
-
-## Quick Start
-
-1. **Install globally**:
-   ```bash
-   bun install && bun run build && npm link
-   ```
-
-2. **Setup ZSH plugin** (auto-runs on `git add`):
-   ```bash
-   # See SETUP.md for detailed instructions
-   source ~/.zsh/plugins/git-safety/git-safety.plugin.zsh
-   ```
-
-3. **Use normally**:
-   ```bash
-   git add .              # Automatically scans
-   git add . --force      # Skip checks
-   ```
-
-See [SETUP.md](./SETUP.md) for complete installation instructions.
-
-### Options
-
-- `--force` - Skip all security checks
-- `--no-ui` - Disable web UI (use CLI only)
-
-### Web UI Mode (New in v3!)
-
-By default, git-add-safely opens an interactive web UI:
+## Install
 
 ```bash
-git add .
-# → Opens http://localhost:3450 with:
-#   - File list with status badges
-#   - Syntax-highlighted warnings
-#   - Approve/Cancel buttons
+# Run without installing
+bunx git-add-safely --watch
+
+# Install globally
+bun install -g git-add-safely
 ```
 
-**Configure in `.git-safely.json`:**
+Requires [Bun](https://bun.sh) — does not run on Node.
+
+## Modes
+
+### Default — scan and stage (CLI)
+
+```bash
+git-add-safely .
+git-add-safely src/auth.ts
+```
+
+Runs `git add`, scans staged files for secrets, prompts in terminal if anything is found.
+
+### `--ui` — visual approval in browser
+
+```bash
+git-add-safely . --ui
+```
+
+Opens a web UI showing the diff. You approve or cancel staging from the browser.
+
+### `--watch` — live review UI
+
+```bash
+git-add-safely --watch
+```
+
+Long-running server that opens a full UI at `https://project.git.studio` (or `http://127.0.0.1:<port>` with `--no-domain`).
+
+Features:
+- Browse staged and unstaged diffs
+- Stage / unstage files
+- Write **inline notes** on any diff line — saved to `.git-notes/`
+- Trigger **AI code review** per file or across all staged files
+- Notes are automatically included as context in AI reviews
+- Generate commit messages with AI
+- Manage git stashes
+- Interact with GitHub PRs (view, comment, reply)
+
+## Options
+
+```
+--force         Skip all security checks
+--ui            Open web UI for approval
+--watch         Live review UI server
+--no-domain     Use http://127.0.0.1:<port> (skip /etc/hosts setup)
+--http-only     Use http://project.git.studio (skip HTTPS proxy)
+--port <n>      Use specific port (default: random free port)
+-v, --version   Show version
+-h, --help      Show help
+```
+
+## Secret scanning
+
+Scans staged files for:
+- AWS / GCP / Azure credentials
+- Private keys (RSA, DSA, EC)
+- API tokens (GitHub, Slack, Discord, Stripe, SendGrid, etc.)
+- Dangerous filenames (`.env`, `.pem`, `.key`, `credentials.json`, etc.)
+
+Test files get lighter treatment — only high-confidence patterns trigger.
+
+## AI code review
+
+In `--watch` mode, open any file and click **Review with Claude** (or **Review all**) in the toolbar. Requires an AI provider configured in the settings UI (Anthropic, OpenAI, Google, or any OpenAI-compatible endpoint).
+
+API keys are stored in `~/.git-add-safely/settings.json` — never in the repo.
+
+## Inline review notes
+
+Click any diff line in `--watch` mode to add a markdown note. Notes are:
+- Saved to `.git-notes/` (gitignored automatically)
+- Shown inline in the diff
+- Included as context when you run an AI review
+
+## Configuration
+
+Optional `.git-safely.json` in project root:
+
 ```json
 {
   "plugins": {
@@ -65,103 +105,26 @@ git add .
 }
 ```
 
-### Example Output (CLI mode)
+## ZSH integration
 
-```
-✨ Staged files:
-src/config.ts
-src/api/client.ts
+To intercept `git add` automatically, add to `~/.zshrc`:
 
-🔎 Scanning for sensitive information…
-⚠️  [AWS Secret Key] detected in src/config.ts:12: const AWS_SECRET = "wJalrX..."
-
-🚨 Potential sensitive data detected!
-📄 Files with sensitive content: src/config.ts
-❓ Do you want to continue anyway? [y/N]:
-```
-
-## Improvements (v2)
-
-### Reduced False Positives
-
-- **Context-aware patterns**: Patterns now require assignment operators (`:`, `=`) and variable names
-- **Removed overly broad patterns**: Phone numbers, credit cards, and private IPs removed
-- **Test file handling**: Test files are treated more leniently (only high-confidence patterns trigger)
-
-### Pattern Improvements
-
-| Pattern | Before | After |
-|---------|--------|-------|
-| AWS Secret Key | Any 40-char string | Must have `secret_key =` context |
-| Azure Client Secret | Any 34-40 char string | Must have `client_secret =` context |
-| PayPal IDs | Any 80-char string | Must have `paypal_client_id =` context |
-
-### Test File Detection
-
-Files matching these patterns are treated as test files:
-- `*.test.{ts,js,tsx,jsx,php}`
-- `*.spec.{ts,js,tsx,jsx,php}`
-- Files in `/tests/`, `/__tests__/`, `/spec/` directories
-- `*Test.{php,java,cs,py}`
-
-## Plugin System
-
-git-add-safely v3+ includes a powerful plugin system. See [PLUGINS.md](./PLUGINS.md) for full documentation.
-
-### Creating a Plugin
-
-```typescript
-import type { Plugin } from "git-add-safely/types";
-
-export class MyPlugin implements Plugin {
-  name = "my-plugin";
-  version = "1.0.0";
-
-  hooks = {
-    afterScan: async (context) => {
-      // Your custom logic here
-      console.log("Files:", context.stagedFiles);
-      return context;
-    },
-  };
+```zsh
+git() {
+  if [[ $1 == "add" ]]; then
+    git-add-safely "${@:2}"
+  else
+    command git "$@"
+  fi
 }
 ```
 
-### Built-in Plugins
-
-- **web-ui** - Interactive web interface for reviewing changes
-- More coming soon! (AI commit messages, auto-format, code review)
-
-See [PLUGINS.md](./PLUGINS.md) for:
-- Plugin API documentation
-- Hook reference
-- Configuration options
-- Custom plugin examples
+See [SETUP.md](./SETUP.md) for full shell integration instructions.
 
 ## Development
 
-Built with [Bun](https://bun.sh) - a fast all-in-one JavaScript runtime.
-
 ```bash
-bun install          # Install dependencies
-bun run build        # Build to dist/
-node dist/index.js . # Test locally
+bun install
+bun run build       # builds UI + CLI → dist/
+bun dist/index.js . # test locally
 ```
-
-## Changelog
-
-### v3.0.0 (2026-01-29)
-- ✨ Added Web UI plugin with interactive interface
-- 🔌 Introduced plugin system architecture
-- 📦 Modular design - enable only what you need
-- 🎨 Modern, dark-themed web interface
-- 🚀 Improved performance with async scanning
-
-### v2.0.0 (2026-01-29)
-- 🎯 Context-aware pattern matching
-- 🧪 Smart test file handling
-- ❌ Removed overly broad patterns (phone, CC, IP)
-- 🔧 Better error messages
-
-### v1.0.0
-- Initial release with basic secret scanning
