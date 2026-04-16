@@ -1,15 +1,26 @@
 {
   "name": "git-add-safely",
+  "version": "0.1.0",
+  "description": "Git add wrapper with secret scanning and AI code review UI",
+  "author": "Sebastian Pavel",
+  "license": "MIT",
   "module": "index.ts",
   "type": "module",
   "bin": {
     "git-add-safely": "dist/index.js"
   },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "build:cli": "bun build src/index.ts src/proxy/daemon.ts --outdir dist --target node",
     "build:ui": "cd ui && bun run build",
     "build": "bun run build:ui && bun run build:cli",
-    "dev": "cd ui && bun run dev"
+    "dev": "cd ui && bun run dev",
+    "prepublishOnly": "bun run build"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest"
