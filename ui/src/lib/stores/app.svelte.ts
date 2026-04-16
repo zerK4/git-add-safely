@@ -100,6 +100,7 @@ export async function loadContext() {
     _context = await fetchContext();
     _unstagedFiles = _context.unstagedFiles ?? [];
     _watchMode = _context.watchMode ?? false;
+    if (_context.repoName) document.title = _context.repoName;
 
     // Load stats and notes in parallel, non-blocking
     Promise.all([fetchDiffStats(), fetchAllNotes()]).then(([stats, allNotes]) => {

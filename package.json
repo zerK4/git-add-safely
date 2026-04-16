@@ -6,7 +6,7 @@
     "git-add-safely": "dist/index.js"
   },
   "scripts": {
-    "build:cli": "bun build src/index.ts --outdir dist --target node",
+    "build:cli": "bun build src/index.ts src/proxy/daemon.ts --outdir dist --target node",
     "build:ui": "cd ui && bun run build",
     "build": "bun run build:ui && bun run build:cli",
     "dev": "cd ui && bun run dev"

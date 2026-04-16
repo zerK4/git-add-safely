@@ -2,6 +2,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join, extname } from "node:path";
 import { buildHostname, ensureHostsEntry } from "../core/hosts-manager";
+import { findFreePort, registerRoute, unregisterRoute } from "../core/proxy-registry";
+import { ensureProxyRunning } from "../proxy/manager";
+import { certsExist } from "../core/cert-manager";
 import { readSettings, writeSettings } from "../core/settings";
 import { streamAIResponse } from "../core/ai-runner";
 import { getProviderForFeature } from "../core/settings";
@@ -27,13 +30,13 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-const PORT = 3450;
-
 export class WatchModeServer {
   private repoRoot: string;
   private watcher: GitWatcher;
   private scanner: SecretScanner;
   private sseClients = new Set<ReadableStreamDefaultController>();
+  private hostname: string = "";
+  private port: number = 0;
 
   constructor(repoRoot: string) {
     this.repoRoot = repoRoot;
@@ -43,9 +46,13 @@ export class WatchModeServer {
 
   async start() {
     const repoName = this.repoRoot.split("/").pop() ?? "unknown";
-    const hostname = buildHostname(repoName);
-    ensureHostsEntry(hostname);
-    const uiUrl = `http://${hostname}:${PORT}`;
+    this.hostname = buildHostname(repoName);
+    this.port = await findFreePort();
+    ensureHostsEntry(this.hostname);
+    await ensureProxyRunning();
+    registerRoute(this.hostname, this.port, process.pid);
+    const scheme = certsExist() ? "https" : "http";
+    const uiUrl = `${scheme}://${this.hostname}`;
     console.log(`\n\x1b[1m\x1b[35mgit-add-safely\x1b[0m  \x1b[2mwatch mode\x1b[0m`);
     console.log(`\x1b[2m  repo\x1b[0m   ${repoName}`);
 
@@ -59,7 +66,7 @@ export class WatchModeServer {
     const uiDistPath = join(import.meta.dir, "ui");
 
     const server = Bun.serve({
-      port: PORT,
+      port: this.port,
       idleTimeout: 0,
       async fetch(req) {
         const url = new URL(req.url);
@@ -321,13 +328,20 @@ export class WatchModeServer {
     });
 
     console.log(`\x1b[2m  url\x1b[0m    \x1b[36m\x1b[4m${uiUrl}\x1b[0m`);
-    console.log(`\x1b[2m  port\x1b[0m   ${PORT}`);
     console.log(`\n\x1b[2m  watching for changes... Ctrl+C to stop\x1b[0m\n`);
 
     // Open browser
     const platform = process.platform;
     const openCmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
     spawn(openCmd, [uiUrl], { detached: true, stdio: "ignore" }).unref();
+
+    // Cleanup on exit
+    const cleanup = () => {
+      unregisterRoute(this.hostname);
+      process.exit(0);
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
 
     // Keep alive
     await new Promise(() => {});

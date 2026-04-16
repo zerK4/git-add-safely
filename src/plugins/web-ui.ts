@@ -3,6 +3,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { buildHostname, ensureHostsEntry } from "../core/hosts-manager";
+import { findFreePort, registerRoute, unregisterRoute } from "../core/proxy-registry";
+import { ensureProxyRunning } from "../proxy/manager";
+import { certsExist } from "../core/cert-manager";
 import {
   createConversation,
   addMessage,
@@ -38,10 +41,11 @@ export class WebUIPlugin implements Plugin {
 
   private config: WebUIConfig = {
     autoOpen: true,
-    port: 3450,
+    port: undefined,
   };
   private serverProcess: any = null;
   private decisionResolver: ((value: boolean) => void) | null = null;
+  private hostname: string = "";
 
   async init(config?: WebUIConfig) {
     if (config) {
@@ -57,10 +61,16 @@ export class WebUIPlugin implements Plugin {
 
       const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
       const projectName = repoResult.stdout.trim().split("/").pop() ?? "project";
-      const hostname = buildHostname(projectName);
-      ensureHostsEntry(hostname);
+      this.hostname = buildHostname(projectName);
+      if (!this.config.port) {
+        this.config.port = await findFreePort();
+      }
+      ensureHostsEntry(this.hostname);
+      await ensureProxyRunning();
+      registerRoute(this.hostname, this.config.port, process.pid);
 
-      const uiUrl = `http://${hostname}:${this.config.port}`;
+      const scheme = certsExist() ? "https" : "http";
+      const uiUrl = `${scheme}://${this.hostname}`;
       console.log(`\x1b[2m  url\x1b[0m    \x1b[36m\x1b[4m${uiUrl}\x1b[0m`);
 
       await this.startServer(context);
@@ -537,11 +547,10 @@ export class WebUIPlugin implements Plugin {
 
   async cleanup() {
     if (this.serverProcess) {
-      try {
-        this.serverProcess.stop();
-      } catch {
-        // already stopped
-      }
+      try { this.serverProcess.stop(); } catch {}
+    }
+    if (this.hostname) {
+      unregisterRoute(this.hostname);
     }
   }
 }
