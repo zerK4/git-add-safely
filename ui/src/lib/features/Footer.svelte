@@ -1,64 +1,213 @@
 <script lang="ts">
-  import { Check, X } from "@lucide/svelte";
+  import { Check, X, Sparkles, GitCommit, GitBranch, Loader2 } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Separator } from "$lib/components/ui/separator";
   import { Badge } from "$lib/components/ui/badge";
   import { approve, cancel, store } from "$lib/stores/app.svelte";
+  import { postCommit, postPush } from "$lib/api/client";
   import ClaudeStatusBar from "./ClaudeStatusBar.svelte";
 
-  let status = $state<"idle" | "approved" | "cancelled">("idle");
+  type FooterStatus = "idle" | "committed" | "pushed" | "cancelled" | "done";
 
-  async function handleApprove() {
-    status = "approved";
-    await approve();
-    setTimeout(() => window.close(), 1800);
+  let status = $state<FooterStatus>("idle");
+  let commitMessage = $state("");
+  let generating = $state(false);
+  let committing = $state(false);
+  let pushing = $state(false);
+  let errorMsg = $state<string | null>(null);
+
+  const branch = $derived(store.context?.branchName ?? "HEAD");
+  const fileCount = $derived(store.context?.stagedFiles.length ?? 0);
+
+  async function handleGenerate() {
+    generating = true;
+    commitMessage = "";
+    errorMsg = null;
+    try {
+      const res = await fetch("/api/generate-commit", { method: "POST" });
+      if (!res.ok || !res.body) throw new Error("Request failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === "text") commitMessage += parsed.text;
+          } catch { /* skip */ }
+        }
+      }
+      commitMessage = commitMessage.trim();
+    } catch (e) {
+      errorMsg = (e as Error).message;
+    } finally {
+      generating = false;
+    }
+  }
+
+  async function handleCommit() {
+    if (!commitMessage.trim()) return;
+    committing = true;
+    errorMsg = null;
+    try {
+      const res = await postCommit(commitMessage.trim());
+      if (!res.ok) { errorMsg = res.error ?? "Commit failed"; return; }
+      status = "committed";
+      // Unblock CLI — approve so git-add-safely exits cleanly
+      await approve();
+    } catch (e) {
+      errorMsg = (e as Error).message;
+    } finally {
+      committing = false;
+    }
+  }
+
+  async function handleCommitAndPush() {
+    if (!commitMessage.trim()) return;
+    committing = true;
+    errorMsg = null;
+    try {
+      const commitRes = await postCommit(commitMessage.trim());
+      if (!commitRes.ok) { errorMsg = commitRes.error ?? "Commit failed"; return; }
+      pushing = true;
+      committing = false;
+      const pushRes = await postPush();
+      if (!pushRes.ok) { errorMsg = pushRes.error ?? "Push failed"; return; }
+      status = "pushed";
+      await approve();
+    } catch (e) {
+      errorMsg = (e as Error).message;
+    } finally {
+      committing = false;
+      pushing = false;
+    }
   }
 
   async function handleCancel() {
     status = "cancelled";
     await cancel();
-    setTimeout(() => window.close(), 1800);
   }
 
-  const fileCount = $derived(store.context?.stagedFiles.length ?? 0);
+  function handleDone() {
+    window.close();
+  }
 </script>
 
 <div>
   <Separator />
-  <footer class="flex items-center gap-3 px-5 py-3 bg-card">
+  <footer class="px-5 py-3 bg-card">
+
     {#if status === "idle"}
-      <ClaudeStatusBar />
-      <span class="text-xs text-muted-foreground mr-auto font-sans">
-        {fileCount} file{fileCount !== 1 ? "s" : ""} staged
-        {#if store.warningCount > 0}
-          &middot;
-          <Badge variant="destructive" class="text-[10px] px-1.5 py-0 h-4 ml-1">
-            {store.warningCount} warning{store.warningCount !== 1 ? "s" : ""}
-          </Badge>
+      <!-- Commit message area -->
+      <div class="mb-3">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-sans">Commit message</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-6 px-2 text-[11px] gap-1 text-primary/70 hover:text-primary ml-auto"
+            onclick={handleGenerate}
+            disabled={generating}
+          >
+            {#if generating}
+              <Loader2 class="size-3 animate-spin" />
+              Generating…
+            {:else}
+              <Sparkles class="size-3" />
+              Generate with Claude
+            {/if}
+          </Button>
+        </div>
+        <textarea
+          class="w-full text-xs font-mono bg-input border border-input rounded px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground/40 min-h-[56px]"
+          placeholder="feat(scope): describe your changes…"
+          rows={2}
+          bind:value={commitMessage}
+        ></textarea>
+        {#if errorMsg}
+          <p class="text-[11px] text-destructive mt-1 font-sans">{errorMsg}</p>
         {/if}
-      </span>
-      <Button variant="outline" size="sm" class="gap-1.5" onclick={handleCancel}>
-        <X class="size-3.5" />
-        Cancel
-      </Button>
-      <Button
-        size="sm"
-        class="gap-1.5 bg-status-good hover:bg-status-good/80 text-background"
-        onclick={handleApprove}
-      >
-        <Check class="size-3.5" />
-        Approve &amp; Continue
-      </Button>
-    {:else if status === "approved"}
-      <span class="text-sm text-status-good flex items-center gap-2 mx-auto font-sans">
-        <Check class="size-4" />
-        Approved — you can close this window
-      </span>
-    {:else}
-      <span class="text-sm text-muted-foreground flex items-center gap-2 mx-auto font-sans">
+      </div>
+
+      <!-- Actions row -->
+      <div class="flex items-center gap-2">
+        <ClaudeStatusBar />
+        <span class="text-xs text-muted-foreground font-sans mr-auto">
+          {fileCount} file{fileCount !== 1 ? "s" : ""} staged
+          {#if store.warningCount > 0}
+            &middot;
+            <Badge variant="destructive" class="text-[10px] px-1.5 py-0 h-4 ml-1">
+              {store.warningCount} warning{store.warningCount !== 1 ? "s" : ""}
+            </Badge>
+          {/if}
+        </span>
+        <Button variant="outline" size="sm" class="gap-1.5" onclick={handleCancel}>
+          <X class="size-3.5" />
+          Cancel
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="gap-1.5"
+          disabled={!commitMessage.trim() || committing || pushing}
+          onclick={handleCommit}
+        >
+          {#if committing && !pushing}
+            <Loader2 class="size-3.5 animate-spin" />
+          {:else}
+            <GitCommit class="size-3.5" />
+          {/if}
+          Commit only
+        </Button>
+        <Button
+          size="sm"
+          class="gap-1.5 bg-status-good hover:bg-status-good/80 text-background"
+          disabled={!commitMessage.trim() || committing || pushing}
+          onclick={handleCommitAndPush}
+        >
+          {#if pushing}
+            <Loader2 class="size-3.5 animate-spin" />
+          {:else}
+            <GitBranch class="size-3.5" />
+          {/if}
+          Commit &amp; Push → <span class="font-mono opacity-80">{branch}</span>
+        </Button>
+      </div>
+
+    {:else if status === "committed"}
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-status-good flex items-center gap-2 font-sans">
+          <Check class="size-4" />
+          Committed successfully
+        </span>
+        <Button variant="outline" size="sm" class="ml-auto" onclick={handleDone}>Done</Button>
+      </div>
+
+    {:else if status === "pushed"}
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-status-good flex items-center gap-2 font-sans">
+          <Check class="size-4" />
+          Committed &amp; pushed to <span class="font-mono ml-1">{branch}</span>
+        </span>
+        <Button variant="outline" size="sm" class="ml-auto" onclick={handleDone}>Done</Button>
+      </div>
+
+    {:else if status === "cancelled"}
+      <span class="text-sm text-muted-foreground flex items-center gap-2 font-sans">
         <X class="size-4" />
         Cancelled — you can close this window
       </span>
     {/if}
+
   </footer>
 </div>

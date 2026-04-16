@@ -86,7 +86,9 @@ export class WebUIPlugin implements Plugin {
         if (url.pathname === "/api/context") {
           const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
           const repoName = repoResult.stdout.trim().split("/").pop() ?? "unknown";
-          return Response.json({ ...context, repoName });
+          const branchResult = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf-8" });
+          const branchName = branchResult.stdout.trim() || "HEAD";
+          return Response.json({ ...context, repoName, branchName });
         }
 
         if (url.pathname === "/api/diff") {
@@ -444,6 +446,106 @@ export class WebUIPlugin implements Plugin {
           const body = await req.json() as { conversation_id: number; role: "user" | "assistant"; content: string };
           addMessage(body.conversation_id, body.role, body.content);
           return Response.json({ ok: true });
+        }
+
+        // --- Commit / push ---
+
+        if (url.pathname === "/api/commit" && req.method === "POST") {
+          const body = await req.json() as { message: string };
+          if (!body.message?.trim()) return Response.json({ ok: false, error: "Empty message" }, { status: 400 });
+          const result = spawnSync("git", ["commit", "-m", body.message], { encoding: "utf-8" });
+          if (result.status !== 0) {
+            return Response.json({ ok: false, error: result.stderr.trim() || result.stdout.trim() });
+          }
+          return Response.json({ ok: true, output: result.stdout.trim() });
+        }
+
+        if (url.pathname === "/api/push" && req.method === "POST") {
+          const branchResult = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf-8" });
+          const branch = branchResult.stdout.trim() || "HEAD";
+          const result = spawnSync("git", ["push", "origin", branch], { encoding: "utf-8" });
+          if (result.status !== 0) {
+            return Response.json({ ok: false, error: result.stderr.trim() || result.stdout.trim() });
+          }
+          return Response.json({ ok: true, output: result.stderr.trim() || result.stdout.trim() });
+        }
+
+        // --- Generate commit message ---
+
+        if (url.pathname === "/api/generate-commit" && req.method === "POST") {
+          const repoResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+          const repoRoot = repoResult.stdout.trim();
+
+          const stagedFiles = context.stagedFiles.map((f) => f.path);
+          const diffs = stagedFiles.map((file) => {
+            const r = spawnSync("git", ["diff", "--cached", "--", file], { encoding: "utf-8" });
+            return { file, diff: r.stdout ?? "" };
+          });
+
+          const diffSection = diffs
+            .filter((d) => d.diff.trim())
+            .map((d) => `### ${d.file}\n\`\`\`diff\n${d.diff}\n\`\`\``)
+            .join("\n\n");
+
+          const prompt = `Generate a concise git commit message for these staged changes. Follow Conventional Commits format (type(scope): description). Use one of: feat, fix, refactor, chore, docs, style, test, perf. Keep the subject line under 72 characters. Output ONLY the commit message — no explanation, no markdown, no quotes.\n\n${diffSection}`;
+
+          const stream = new ReadableStream({
+            start(controller) {
+              const enc = new TextEncoder();
+              let closed = false;
+
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+              }
+
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+
+              const proc = spawn("claude", ["--print", "--output-format", "stream-json", "--verbose"], {
+                cwd: repoRoot,
+                env: { ...process.env },
+              });
+
+              proc.stdin.write(prompt);
+              proc.stdin.end();
+
+              let buffer = "";
+              proc.stdout.on("data", (chunk: Buffer) => {
+                if (closed) return;
+                buffer += chunk.toString();
+                const lines = buffer.split("\n");
+                buffer = lines.pop() ?? "";
+                for (const line of lines) {
+                  if (!line.trim()) continue;
+                  try {
+                    const event = JSON.parse(line);
+                    if (event.type === "assistant") {
+                      for (const block of event.message?.content ?? []) {
+                        if (block.type === "text") send({ type: "text", text: block.text });
+                      }
+                    }
+                  } catch { /* skip */ }
+                }
+              });
+
+              proc.stderr.on("data", (_chunk: Buffer) => {});
+              proc.on("close", finish);
+              proc.on("error", (err: Error) => { send({ type: "error", error: err.message }); finish(); });
+            },
+          });
+
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive",
+            },
+          });
         }
 
         // --- Diff stats ---

@@ -16,6 +16,7 @@ export interface AppContext {
   scanResults: ScanResult[];
   config: Record<string, unknown>;
   repoName?: string;
+  branchName?: string;
 }
 
 export type DiffLineType = "add" | "remove" | "context" | "hunk-header";

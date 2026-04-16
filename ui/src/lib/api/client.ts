@@ -32,6 +32,22 @@ export async function postCancel(): Promise<void> {
   await fetch("/api/cancel", { method: "POST" });
 }
 
+// --- Commit / push ---
+
+export async function postCommit(message: string): Promise<{ ok: boolean; output?: string; error?: string }> {
+  const res = await fetch("/api/commit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  return res.json();
+}
+
+export async function postPush(): Promise<{ ok: boolean; output?: string; error?: string }> {
+  const res = await fetch("/api/push", { method: "POST" });
+  return res.json();
+}
+
 // --- Diff stats ---
 
 export async function fetchDiffStats(): Promise<Record<string, { added: number; removed: number }>> {

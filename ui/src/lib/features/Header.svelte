@@ -16,6 +16,10 @@
     <span class="text-muted-foreground">/</span>
     <span class="text-sm text-muted-foreground font-sans">{store.context.repoName}</span>
   {/if}
+  {#if store.context?.branchName}
+    <span class="text-muted-foreground">·</span>
+    <span class="text-xs font-mono text-primary/70 bg-primary/8 border border-primary/20 px-1.5 py-0.5 rounded">{store.context.branchName}</span>
+  {/if}
 
   <div class="ml-auto flex items-center gap-2">
     <Button
