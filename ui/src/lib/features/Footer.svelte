@@ -1,11 +1,11 @@
 <script lang="ts">
   import { Check, X, Sparkles, GitCommit, GitBranch, Loader2, CheckCircle } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
-  import { Separator } from "$lib/components/ui/separator";
   import { Badge } from "$lib/components/ui/badge";
   import { approve, cancel, store } from "$lib/stores/app.svelte";
   import { postCommit, postPush } from "$lib/api/client";
   import ClaudeStatusBar from "./ClaudeStatusBar.svelte";
+  import AuroraLoadingBar from "$lib/components/ui/aurora-loading-bar.svelte";
 
   let commitMessage = $state("");
   let generating = $state(false);
@@ -30,6 +30,7 @@
     generating = true;
     commitMessage = "";
     errorMsg = null;
+    successMsg = null;
     try {
       const res = await fetch("/api/generate-commit", { method: "POST" });
       if (!res.ok || !res.body) throw new Error("Request failed");
@@ -107,18 +108,26 @@
   }
 </script>
 
-<div>
-  <Separator />
-  <footer class="px-5 py-3 bg-card">
+<div class="relative shrink-0">
+  <AuroraLoadingBar active={generating} />
 
-    <!-- Commit message area -->
-    <div class="mb-3">
-      <div class="flex items-center gap-2 mb-1.5">
-        <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-sans">Commit message</span>
+  <footer
+    class="bg-card px-4 pt-3 pb-3"
+    style="box-shadow: 0 -1px 0 0 var(--border), 0 -8px 24px -4px color-mix(in srgb, var(--background) 60%, transparent);"
+  >
+    <!-- Textarea zone -->
+    <div
+      class="relative mb-2.5 rounded-lg transition-all duration-300"
+      style={generating
+        ? "box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), 0 0 16px 0 color-mix(in srgb, var(--primary) 12%, transparent);"
+        : "box-shadow: 0 0 0 1px var(--border);"}
+    >
+      <!-- Generate button — floats inside top-right of textarea -->
+      <div class="absolute top-2 right-2 z-10">
         <Button
           variant="ghost"
           size="sm"
-          class="h-6 px-2 text-[11px] gap-1 text-primary/70 hover:text-primary ml-auto"
+          class="h-6 px-2 gap-1 text-[11px] font-sans {generating ? 'text-primary/60 pointer-events-none' : 'text-muted-foreground hover:text-primary hover:bg-primary/8'}"
           onclick={handleGenerate}
           disabled={generating}
         >
@@ -131,64 +140,87 @@
           {/if}
         </Button>
       </div>
+
       <textarea
-        class="w-full text-xs font-mono bg-input border border-input rounded px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground/40 min-h-[56px]"
+        class="w-full text-[13px] font-mono leading-relaxed bg-transparent rounded-lg px-3 pt-2.5 pb-2.5 pr-40 resize-none focus:outline-none text-foreground placeholder:text-muted-foreground/35 min-h-[62px] max-h-[140px]"
         placeholder="feat(scope): describe your changes…"
-        rows={2}
+        rows={3}
         bind:value={commitMessage}
       ></textarea>
-      {#if errorMsg}
-        <p class="text-[11px] text-destructive mt-1 font-sans">{errorMsg}</p>
-      {:else if successMsg}
-        <p class="text-[11px] text-status-good mt-1 font-sans flex items-center gap-1">
-          <CheckCircle class="size-3" />{successMsg}
-        </p>
-      {/if}
     </div>
 
-    <!-- Actions row -->
+    <!-- Status line -->
+    {#if errorMsg}
+      <div class="flex items-center gap-1.5 mb-2 px-1">
+        <span class="size-1.5 rounded-full bg-destructive shrink-0"></span>
+        <p class="text-[11px] text-destructive font-sans leading-none">{errorMsg}</p>
+      </div>
+    {:else if successMsg}
+      <div class="flex items-center gap-1.5 mb-2 px-1">
+        <CheckCircle class="size-3 text-status-good shrink-0" />
+        <p class="text-[11px] text-status-good font-sans leading-none">{successMsg}</p>
+      </div>
+    {/if}
+
+    <!-- Action bar -->
     <div class="flex items-center gap-2">
-      <ClaudeStatusBar />
-      <span class="text-xs text-muted-foreground font-sans mr-auto">
-        {fileCount} file{fileCount !== 1 ? "s" : ""} staged
+      <!-- Left: status info -->
+      <div class="flex items-center gap-2 mr-auto min-w-0">
+        <ClaudeStatusBar />
+        <span class="text-[11px] text-muted-foreground font-sans tabular-nums shrink-0">
+          {fileCount} file{fileCount !== 1 ? "s" : ""} staged
+        </span>
         {#if store.warningCount > 0}
-          &middot;
-          <Badge variant="destructive" class="text-[10px] px-1.5 py-0 h-4 ml-1">
+          <Badge variant="destructive" class="text-[10px] px-1.5 py-0 h-4 shrink-0">
             {store.warningCount} warning{store.warningCount !== 1 ? "s" : ""}
           </Badge>
         {/if}
-      </span>
-      <Button variant="outline" size="sm" class="gap-1.5" onclick={handleCancel}>
-        <X class="size-3.5" />
-        Cancel
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        class="gap-1.5"
-        disabled={!commitMessage.trim() || committing || pushing}
-        onclick={handleCommit}
-      >
-        {#if committing && !pushing}
-          <Loader2 class="size-3.5 animate-spin" />
-        {:else}
-          <GitCommit class="size-3.5" />
-        {/if}
-        Commit only
-      </Button>
-      <Button
-        size="sm"
-        class="gap-1.5 bg-status-good hover:bg-status-good/80 text-background"
-        disabled={!commitMessage.trim() || committing || pushing}
-        onclick={handleCommitAndPush}
-      >
-        {#if pushing}
-          <Loader2 class="size-3.5 animate-spin" />
-        {:else}
-          <GitBranch class="size-3.5" />
-        {/if}
-        Commit &amp; Push → <span class="font-mono opacity-80">{branch}</span>
-      </Button>
+      </div>
+
+      <!-- Right: actions -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="gap-1.5 text-muted-foreground hover:text-foreground"
+          onclick={handleCancel}
+        >
+          <X class="size-3.5" />
+          Cancel
+        </Button>
+
+        <div class="w-px h-4 bg-border"></div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          class="gap-1.5"
+          disabled={!commitMessage.trim() || committing || pushing}
+          onclick={handleCommit}
+        >
+          {#if committing && !pushing}
+            <Loader2 class="size-3.5 animate-spin" />
+          {:else}
+            <GitCommit class="size-3.5" />
+          {/if}
+          Commit
+        </Button>
+
+        <Button
+          size="sm"
+          class="gap-1.5 bg-status-good hover:bg-status-good/85 text-background border-transparent"
+          disabled={!commitMessage.trim() || committing || pushing}
+          onclick={handleCommitAndPush}
+        >
+          {#if pushing}
+            <Loader2 class="size-3.5 animate-spin" />
+          {:else}
+            <GitBranch class="size-3.5" />
+          {/if}
+          Push
+          <span class="font-mono text-[11px] opacity-70 ml-0.5">→ {branch}</span>
+        </Button>
+      </div>
     </div>
 
   </footer>
