@@ -1,158 +1,84 @@
-# Setup Instructions for git-add-safely
+# Setup
 
-## Installation
-
-### 1. Install the tool globally
+## 1. Install
 
 ```bash
-cd /path/to/git-add-safely
-bun install
-bun run build
-npm link  # or: bun link
+bun install -g git-add-safely
 ```
 
-Verify installation:
+Verify:
 ```bash
 which git-add-safely
-# Should output: /Users/yourusername/.bun/bin/git-add-safely (or similar)
+git-add-safely --version
 ```
 
-### 2. Configure ZSH plugin
+## 2. ZSH integration (optional)
 
-Create the plugin directory:
-```bash
-mkdir -p ~/.zsh/plugins/git-safety
-```
+Intercepts `git add` automatically so you don't have to change your workflow.
 
-Create the plugin file `~/.zsh/plugins/git-safety/git-safety.plugin.zsh`:
+Add to `~/.zshrc`:
 
 ```zsh
-#!/bin/zsh
-# Git Safety Plugin for ZSH - v2.0
-# Uses git-add-safely TypeScript tool for improved secret detection
-
-# Plugin metadata
-GIT_SAFETY_VERSION="2.0.0"
-GIT_SAFETY_TOOL="git-add-safely"
-
-# Override git function to intercept 'git add'
 git() {
-    if [[ $1 == "add" ]]; then
-        # Call git-add-safely with all arguments except 'add'
-        $GIT_SAFETY_TOOL "${@:2}"
-    else
-        # For all other git commands, use the real git
-        command git "$@"
-    fi
+  if [[ $1 == "add" ]]; then
+    git-add-safely "${@:2}"
+  else
+    command git "$@"
+  fi
 }
-
-# Alias for force adding without checks
-alias gaf='git add . --force'
-
-# Plugin info command
-alias git-safety-info='echo "Git Safety Plugin v$GIT_SAFETY_VERSION using $GIT_SAFETY_TOOL"'
-
-# Success message (only if debug mode is on)
-if [[ -n "$GIT_SAFETY_DEBUG" ]]; then
-    echo "✅ Git Safety Plugin v$GIT_SAFETY_VERSION loaded (using git-add-safely)"
-fi
 ```
 
-### 3. Load the plugin in ~/.zshrc
-
-Add to your `~/.zshrc`:
-
-```zsh
-# Git Safety Plugin
-GIT_SAFETY_DEBUG=false  # Set to true for debug output
-source ~/.zsh/plugins/git-safety/git-safety.plugin.zsh
-```
-
-### 4. Reload your shell
-
+Reload:
 ```bash
 source ~/.zshrc
 ```
 
-Or restart your terminal.
+Now `git add .` runs through git-add-safely automatically.
+
+## 3. Verify
+
+```bash
+# Should detect AWS key
+echo 'const AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"' > /tmp/test-secret.js
+git add /tmp/test-secret.js
+rm /tmp/test-secret.js
+```
 
 ## Usage
 
-Now `git add` will automatically use `git-add-safely`:
-
 ```bash
-git add .                    # Scans for secrets
-git add src/config.ts        # Scans specific file
-git add . --force            # Skip all checks
-gaf                          # Alias for git add . --force
-```
-
-## Verification
-
-Test that everything works:
-
-```bash
-# Check plugin is loaded
-git-safety-info
-
-# Test with a file
-echo 'const AWS_KEY = "AKIAIOSFODNN7EXAMPLE"' > test.js
-git add test.js
-# Should detect AWS Access Key
-
-rm test.js
+git add .                        # Scan and stage (CLI prompt if secrets found)
+git add . --ui                   # Scan and stage with browser approval UI
+git add . --force                # Skip all checks
+git-add-safely --watch           # Open live review UI
+git-add-safely --watch --no-domain  # Watch mode on http://127.0.0.1:<port>
 ```
 
 ## Troubleshooting
 
-### Command not found: git-add-safely
+### Command not found
 
-Make sure the tool is in your PATH:
+Check Bun's bin directory is in PATH:
 ```bash
-which git-add-safely
-echo $PATH | grep bun  # or grep npm
+echo $PATH | tr ':' '\n' | grep bun
 ```
 
-If not found, try:
-```bash
-cd /path/to/git-add-safely
-npm link --force
-```
-
-### Plugin not loading
-
-Check if the plugin file exists:
-```bash
-cat ~/.zsh/plugins/git-safety/git-safety.plugin.zsh
-```
-
-Check if it's sourced in ~/.zshrc:
-```bash
-grep "git-safety" ~/.zshrc
-```
-
-### Enable debug mode
-
-Set in ~/.zshrc:
+If missing, add to `~/.zshrc`:
 ```zsh
-GIT_SAFETY_DEBUG=true
+export PATH="$HOME/.bun/bin:$PATH"
 ```
 
-Then reload:
+Then reinstall:
 ```bash
-source ~/.zshrc
+bun install -g git-add-safely
 ```
 
-## Backup old plugin
+### ZSH function not intercepting git add
 
-The old bash-based plugin is backed up at:
-```
-~/.zsh/plugins/git-safety/git-safety.plugin.zsh.backup
-```
+Make sure the function is defined **after** any plugin managers (oh-my-zsh, zinit, etc.) in `~/.zshrc` — plugins can override the `git` function too.
 
-To restore it:
+Check it's active:
 ```bash
-cp ~/.zsh/plugins/git-safety/git-safety.plugin.zsh.backup \
-   ~/.zsh/plugins/git-safety/git-safety.plugin.zsh
-source ~/.zshrc
+type git
+# Should show: git is a shell function
 ```

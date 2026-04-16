@@ -4,6 +4,14 @@
   "description": "Git add wrapper with secret scanning and AI code review UI",
   "author": "Sebastian Pavel",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zerK4/git-add-safely"
+  },
+  "homepage": "https://github.com/zerK4/git-add-safely#readme",
+  "bugs": {
+    "url": "https://github.com/zerK4/git-add-safely/issues"
+  },
   "module": "index.ts",
   "type": "module",
   "bin": {
