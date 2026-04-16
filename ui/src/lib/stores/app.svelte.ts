@@ -1,4 +1,4 @@
-import { fetchContext, fetchDiff, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes } from "$lib/api/client";
+import { fetchContext, fetchDiff, fetchUnstagedDiff, stageFile, unstageFile, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes } from "$lib/api/client";
 import type { NoteEntry } from "$lib/api/client";
 import { parseDiff, toSplitRows } from "$lib/diff/parser";
 import type { AppContext, FileStatus, ParsedDiff, SplitRow, ChatMessage } from "$lib/types";
@@ -26,6 +26,11 @@ let _diffStats = $state<Record<string, { added: number; removed: number }>>({});
 // Review all view
 let _reviewAllOpen = $state(false);
 let _reviewAllPinned = $state(false); // true = shown as right panel while DiffView is in center
+
+// Watch mode
+let _watchMode = $state(false);
+let _unstagedFiles = $state<import("$lib/types").FileStatus[]>([]);
+let _selectedFileStaged = $state(true); // is the selected file staged or unstaged?
 
 // Derived
 const _noteCountsByFile = $derived<Record<string, number>>(
@@ -73,6 +78,10 @@ export const store = {
   get reviewAllPinned() { return _reviewAllPinned; },
   get diffStats() { return _diffStats; },
   get noteCountsByFile() { return _noteCountsByFile; },
+  // Watch mode
+  get watchMode() { return _watchMode; },
+  get unstagedFiles() { return _unstagedFiles; },
+  get selectedFileStaged() { return _selectedFileStaged; },
 };
 
 // --- Actions ---
@@ -81,16 +90,23 @@ export async function loadContext() {
   _contextError = null;
   try {
     _context = await fetchContext();
+    _unstagedFiles = _context.unstagedFiles ?? [];
+    _watchMode = _context.watchMode ?? false;
+
     // Load stats and all notes in parallel, non-blocking
     Promise.all([fetchDiffStats(), fetchAllNotes()]).then(([stats, allNotes]) => {
       _diffStats = stats;
-      // Populate _notes from disk so counts show without opening each file
       for (const [filePath, lineMap] of Object.entries(allNotes)) {
         for (const [lineNo, entry] of Object.entries(lineMap)) {
           _notes[`${filePath}::${lineNo}`] = entry;
         }
       }
     }).catch(() => {});
+
+    // In watch mode, connect SSE for live updates
+    if (_watchMode) {
+      connectWatchSSE();
+    }
   } catch (e) {
     _contextError = (e as Error).message;
   } finally {
@@ -98,21 +114,47 @@ export async function loadContext() {
   }
 }
 
+function connectWatchSSE() {
+  const es = new EventSource("/api/watch-events");
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === "status") {
+        // Update staged files in context
+        if (_context) {
+          _context = {
+            ..._context,
+            stagedFiles: data.staged ?? [],
+          };
+        }
+        _unstagedFiles = [...(data.unstaged ?? []), ...(data.untracked ?? [])];
+        // Refresh diff stats silently
+        fetchDiffStats().then(s => { _diffStats = s; }).catch(() => {});
+      }
+    } catch {}
+  };
+  es.onerror = () => {
+    // Reconnect after 3s on error
+    setTimeout(connectWatchSSE, 3000);
+    es.close();
+  };
+}
 
-export async function selectFile(path: string) {
-  if (_selectedFile === path) return;
+
+export async function selectFile(path: string, staged = true) {
+  if (_selectedFile === path && _selectedFileStaged === staged) return;
   _selectedFile = path;
+  _selectedFileStaged = staged;
   _rawDiff = null;
   _activeNoteIndex = null;
   _diffLoading = true;
-  // If review all is open in main panel, pin it to the right so DiffView can take center
   if (_reviewAllOpen && !_reviewAllPinned) {
     _reviewAllPinned = true;
   }
   try {
-    const [diff, remoteNotes] = await Promise.all([fetchDiff(path), fetchNotes(path)]);
+    const diffFn = staged ? fetchDiff : fetchUnstagedDiff;
+    const [diff, remoteNotes] = await Promise.all([diffFn(path), fetchNotes(path)]);
     _rawDiff = diff;
-    // Merge remote notes into local state (remote wins)
     for (const [lineNo, entry] of Object.entries(remoteNotes)) {
       _notes[`${path}::${lineNo}`] = entry;
     }
@@ -166,6 +208,31 @@ export async function deleteNote(rawIndex: number) {
 
 export function getNote(filePath: string, rawIndex: number): NoteEntry | undefined {
   return _notes[`${filePath}::${rawIndex}`];
+}
+
+export async function stageFileAction(path: string) {
+  // Optimistic: move file from unstaged → staged instantly
+  const file = _unstagedFiles.find(f => f.path === path);
+  if (file && _context) {
+    _unstagedFiles = _unstagedFiles.filter(f => f.path !== path);
+    _context = { ..._context, stagedFiles: [..._context.stagedFiles, { ...file, staged: true }] };
+  }
+  await stageFile(path);
+}
+
+export async function unstageFileAction(path: string) {
+  // Optimistic: move file from staged → unstaged instantly
+  const file = _context?.stagedFiles.find(f => f.path === path);
+  if (file && _context) {
+    _context = { ..._context, stagedFiles: _context.stagedFiles.filter(f => f.path !== path) };
+    _unstagedFiles = [..._unstagedFiles, { ...file, staged: false }];
+    // If this was the selected file, clear diff view
+    if (_selectedFile === path) {
+      _selectedFile = null;
+      _rawDiff = null;
+    }
+  }
+  await unstageFile(path);
 }
 
 export async function approve() {

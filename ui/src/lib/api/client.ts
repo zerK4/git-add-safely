@@ -32,6 +32,28 @@ export async function postCancel(): Promise<void> {
   await fetch("/api/cancel", { method: "POST" });
 }
 
+export async function fetchUnstagedDiff(filePath: string): Promise<string> {
+  const res = await fetch(`/api/diff-unstaged?file=${encodeURIComponent(filePath)}`);
+  if (!res.ok) return "";
+  return res.text();
+}
+
+export async function stageFile(filePath: string): Promise<void> {
+  await fetch("/api/stage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: filePath }),
+  });
+}
+
+export async function unstageFile(filePath: string): Promise<void> {
+  await fetch("/api/unstage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: filePath }),
+  });
+}
+
 // --- Commit / push ---
 
 export async function postCommit(message: string): Promise<{ ok: boolean; output?: string; error?: string }> {

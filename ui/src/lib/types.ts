@@ -13,10 +13,12 @@ export interface ScanResult {
 
 export interface AppContext {
   stagedFiles: FileStatus[];
+  unstagedFiles?: FileStatus[];
   scanResults: ScanResult[];
   config: Record<string, unknown>;
   repoName?: string;
   branchName?: string;
+  watchMode?: boolean;
 }
 
 export type DiffLineType = "add" | "remove" | "context" | "hunk-header";

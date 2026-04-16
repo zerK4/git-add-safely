@@ -6,6 +6,7 @@ import { PluginLoader } from "./core/plugin-loader";
 import { SecretScanner } from "./core/scanner";
 import { WebUIPlugin } from "./plugins/web-ui";
 import type { PluginContext } from "./types/plugin";
+import { WatchModeServer } from "./plugins/watch-server";
 
 // Parse arguments
 const args = process.argv.slice(2);
@@ -18,11 +19,12 @@ git-add-safely - Safe git add with secret detection
 Usage:
   git-add-safely <files> [--force] [--no-ui]
   git-add-safely .
-  git-add-safely file1.js file2.ts
+  git-add-safely --watch
 
 Options:
   --force     Skip all security checks
   --no-ui     Disable web UI (use CLI only)
+  --watch     Watch mode — live UI for staging/unstaging files
   --help      Show this help message
 
 Examples:
@@ -30,6 +32,7 @@ Examples:
   git-add-safely src/config.ts        # Add specific file
   git-add-safely . --force            # Skip all checks
   git-add-safely . --no-ui            # CLI mode only
+  git-add-safely --watch              # Watch mode
 
 Configuration:
   Create a .git-safely.json file in your project root to configure plugins:
@@ -43,6 +46,19 @@ Configuration:
     }
   }
 `);
+  process.exit(0);
+}
+
+// --- Watch mode ---
+if (args.includes("--watch")) {
+  const repoRootResult = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" });
+  const repoRoot = repoRootResult.stdout.trim();
+  if (!repoRoot) {
+    console.error("❌ Not inside a git repository.");
+    process.exit(1);
+  }
+  const server = new WatchModeServer(repoRoot);
+  await server.start();
   process.exit(0);
 }
 
