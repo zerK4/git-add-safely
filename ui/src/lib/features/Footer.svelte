@@ -18,6 +18,15 @@
 
   const branch = $derived(store.context?.branchName ?? "HEAD");
   const fileCount = $derived(store.context?.stagedFiles.length ?? 0);
+  const generateLabel = $derived(
+    (() => {
+      const settings = store.settings;
+      if (!settings) return "Claude";
+      const id = settings.featureAssignments.generateCommit;
+      if (!id) return "Claude";
+      return settings.providers.find((p) => p.id === id)?.name ?? "Claude";
+    })()
+  );
 
   async function handleGenerate() {
     generating = true;
@@ -124,7 +133,7 @@
               Generating…
             {:else}
               <Sparkles class="size-3" />
-              Generate with Claude
+              Generate with {generateLabel}
             {/if}
           </Button>
         </div>

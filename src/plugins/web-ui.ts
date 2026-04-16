@@ -11,6 +11,8 @@ import {
   deleteConversation,
 } from "../core/history-db";
 import { getNotesForFile, getAllNotes, setNote } from "../core/notes-db";
+import { readSettings, writeSettings, getProviderForFeature } from "../core/settings";
+import { streamAIResponse } from "../core/ai-runner";
 
 interface WebUIConfig {
   autoOpen?: boolean;
@@ -154,6 +156,7 @@ export class WebUIPlugin implements Plugin {
 
           const prompt = `/code-review Review the following staged diff for file \`${body.file}\` in the context of what is being committed.${warningsSection}\n\nFocus on: bugs, security issues, code quality, and whether the changes are safe to commit.\n\nDiff:\n\`\`\`diff\n${body.diff}\n\`\`\`\n\nProvide a clear, actionable review. Do not write to any files — just respond with your analysis.`;
 
+          const provider = getProviderForFeature("codeReview");
           const stream = new ReadableStream({
             start(controller) {
               const enc = new TextEncoder();
@@ -171,49 +174,7 @@ export class WebUIPlugin implements Plugin {
                 try { controller.close(); } catch {}
               }
 
-              const proc = spawn("claude", ["--print", "--output-format", "stream-json", "--verbose"], {
-                cwd: repoRoot,
-                env: { ...process.env },
-              });
-
-              proc.stdin.write(prompt);
-              proc.stdin.end();
-
-              let buffer = "";
-              proc.stdout.on("data", (chunk: Buffer) => {
-                if (closed) return;
-                buffer += chunk.toString();
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-                for (const line of lines) {
-                  if (!line.trim()) continue;
-                  try {
-                    const event = JSON.parse(line);
-                    if (event.type === "assistant") {
-                      for (const block of event.message?.content ?? []) {
-                        if (block.type === "text") {
-                          send({ type: "text", text: block.text });
-                        }
-                      }
-                    }
-                  } catch {
-                    // non-JSON, skip
-                  }
-                }
-              });
-
-              proc.stderr.on("data", (_chunk: Buffer) => {
-                // suppress stderr — hooks/system messages appear here, not errors
-              });
-
-              proc.on("close", finish);
-              proc.on("error", (err: Error) => {
-                send({ type: "error", error: err.message });
-                finish();
-              });
-            },
-            cancel() {
-              // client disconnected — nothing to clean up since proc already has its own lifecycle
+              streamAIResponse(prompt, provider, repoRoot, send, finish);
             },
           });
 
@@ -248,6 +209,7 @@ export class WebUIPlugin implements Plugin {
 
           const prompt = `/code-review Review the following batch of staged changes across ${body.files.length} file(s).${userNoteSection}\n\nFor each file, identify bugs, security issues, and anything unsafe to commit. Be concise — one section per file, skip files with no issues.\n\n${diffSection}`;
 
+          const provider = getProviderForFeature("codeReview");
           const stream = new ReadableStream({
             start(controller) {
               const enc = new TextEncoder();
@@ -265,36 +227,7 @@ export class WebUIPlugin implements Plugin {
                 try { controller.close(); } catch {}
               }
 
-              const proc = spawn("claude", ["--print", "--output-format", "stream-json", "--verbose"], {
-                cwd: repoRoot,
-                env: { ...process.env },
-              });
-
-              proc.stdin.write(prompt);
-              proc.stdin.end();
-
-              let buffer = "";
-              proc.stdout.on("data", (chunk: Buffer) => {
-                if (closed) return;
-                buffer += chunk.toString();
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-                for (const line of lines) {
-                  if (!line.trim()) continue;
-                  try {
-                    const event = JSON.parse(line);
-                    if (event.type === "assistant") {
-                      for (const block of event.message?.content ?? []) {
-                        if (block.type === "text") send({ type: "text", text: block.text });
-                      }
-                    }
-                  } catch { /* skip */ }
-                }
-              });
-
-              proc.stderr.on("data", (_chunk: Buffer) => {});
-              proc.on("close", finish);
-              proc.on("error", (err: Error) => { send({ type: "error", error: err.message }); finish(); });
+              streamAIResponse(prompt, provider, repoRoot, send, finish);
             },
           });
 
@@ -320,6 +253,7 @@ export class WebUIPlugin implements Plugin {
           const history = body.messages.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n");
           const prompt = history;
 
+          const provider = getProviderForFeature("codeReview");
           const stream = new ReadableStream({
             start(controller) {
               const enc = new TextEncoder();
@@ -337,44 +271,7 @@ export class WebUIPlugin implements Plugin {
                 try { controller.close(); } catch {}
               }
 
-              const proc = spawn("claude", ["--print", "--output-format", "stream-json", "--verbose"], {
-                cwd: repoRoot,
-                env: { ...process.env },
-              });
-
-              proc.stdin.write(prompt);
-              proc.stdin.end();
-
-              let buffer = "";
-              proc.stdout.on("data", (chunk: Buffer) => {
-                if (closed) return;
-                buffer += chunk.toString();
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-                for (const line of lines) {
-                  if (!line.trim()) continue;
-                  try {
-                    const event = JSON.parse(line);
-                    if (event.type === "assistant") {
-                      for (const block of event.message?.content ?? []) {
-                        if (block.type === "text") {
-                          send({ type: "text", text: block.text });
-                        }
-                      }
-                    }
-                  } catch {
-                    // non-JSON, skip
-                  }
-                }
-              });
-
-              proc.stderr.on("data", (_chunk: Buffer) => {});
-
-              proc.on("close", finish);
-              proc.on("error", (err: Error) => {
-                send({ type: "error", error: err.message });
-                finish();
-              });
+              streamAIResponse(prompt, provider, repoRoot, send, finish);
             },
           });
 
@@ -489,6 +386,7 @@ export class WebUIPlugin implements Plugin {
 
           const prompt = `Generate a concise git commit message for these staged changes. Follow Conventional Commits format (type(scope): description). Use one of: feat, fix, refactor, chore, docs, style, test, perf. Keep the subject line under 72 characters. Output ONLY the commit message — no explanation, no markdown, no quotes.\n\n${diffSection}`;
 
+          const provider = getProviderForFeature("generateCommit");
           const stream = new ReadableStream({
             start(controller) {
               const enc = new TextEncoder();
@@ -506,36 +404,7 @@ export class WebUIPlugin implements Plugin {
                 try { controller.close(); } catch {}
               }
 
-              const proc = spawn("claude", ["--print", "--output-format", "stream-json", "--verbose"], {
-                cwd: repoRoot,
-                env: { ...process.env },
-              });
-
-              proc.stdin.write(prompt);
-              proc.stdin.end();
-
-              let buffer = "";
-              proc.stdout.on("data", (chunk: Buffer) => {
-                if (closed) return;
-                buffer += chunk.toString();
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-                for (const line of lines) {
-                  if (!line.trim()) continue;
-                  try {
-                    const event = JSON.parse(line);
-                    if (event.type === "assistant") {
-                      for (const block of event.message?.content ?? []) {
-                        if (block.type === "text") send({ type: "text", text: block.text });
-                      }
-                    }
-                  } catch { /* skip */ }
-                }
-              });
-
-              proc.stderr.on("data", (_chunk: Buffer) => {});
-              proc.on("close", finish);
-              proc.on("error", (err: Error) => { send({ type: "error", error: err.message }); finish(); });
+              streamAIResponse(prompt, provider, repoRoot, send, finish);
             },
           });
 
@@ -594,6 +463,18 @@ export class WebUIPlugin implements Plugin {
           const authorEmail = spawnSync("git", ["config", "user.email"], { encoding: "utf-8" }).stdout.trim();
 
           setNote(repoRoot, body.file, body.lineNo, body.content, authorName, authorEmail);
+          return Response.json({ ok: true });
+        }
+
+        // --- Settings endpoints ---
+
+        if (url.pathname === "/api/settings" && req.method === "GET") {
+          return Response.json(readSettings());
+        }
+
+        if (url.pathname === "/api/settings" && req.method === "POST") {
+          const body = await req.json();
+          writeSettings(body);
           return Response.json({ ok: true });
         }
 

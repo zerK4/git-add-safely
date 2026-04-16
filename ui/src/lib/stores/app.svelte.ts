@@ -1,5 +1,5 @@
-import { fetchContext, fetchDiff, fetchUnstagedDiff, stageFile, unstageFile, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes } from "$lib/api/client";
-import type { NoteEntry } from "$lib/api/client";
+import { fetchContext, fetchDiff, fetchUnstagedDiff, stageFile, unstageFile, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes, fetchSettings, postSettings } from "$lib/api/client";
+import type { NoteEntry, AppSettings } from "$lib/api/client";
 import { parseDiff, toSplitRows } from "$lib/diff/parser";
 import type { AppContext, FileStatus, ParsedDiff, SplitRow, ChatMessage } from "$lib/types";
 
@@ -26,6 +26,10 @@ let _diffStats = $state<Record<string, { added: number; removed: number }>>({});
 // Review all view
 let _reviewAllOpen = $state(false);
 let _reviewAllPinned = $state(false); // true = shown as right panel while DiffView is in center
+
+// Settings
+let _settingsOpen = $state(false);
+let _settings = $state<AppSettings | null>(null);
 
 // Watch mode
 let _watchMode = $state(false);
@@ -78,6 +82,9 @@ export const store = {
   get reviewAllPinned() { return _reviewAllPinned; },
   get diffStats() { return _diffStats; },
   get noteCountsByFile() { return _noteCountsByFile; },
+  // Settings
+  get settingsOpen() { return _settingsOpen; },
+  get settings() { return _settings; },
   // Watch mode
   get watchMode() { return _watchMode; },
   get unstagedFiles() { return _unstagedFiles; },
@@ -93,8 +100,9 @@ export async function loadContext() {
     _unstagedFiles = _context.unstagedFiles ?? [];
     _watchMode = _context.watchMode ?? false;
 
-    // Load stats and all notes in parallel, non-blocking
-    Promise.all([fetchDiffStats(), fetchAllNotes()]).then(([stats, allNotes]) => {
+    // Load stats, notes, and settings in parallel, non-blocking
+    Promise.all([fetchDiffStats(), fetchAllNotes(), fetchSettings()]).then(([stats, allNotes, settings]) => {
+      _settings = settings;
       _diffStats = stats;
       for (const [filePath, lineMap] of Object.entries(allNotes)) {
         for (const [lineNo, entry] of Object.entries(lineMap)) {
@@ -465,6 +473,29 @@ export async function loadConversation(id: number, file: string, title: string) 
     _reviewAllOpen = false;
     _selectedFile = null;
   }
+}
+
+// --- Settings actions ---
+
+export function openSettings() {
+  _settingsOpen = true;
+}
+
+export function closeSettings() {
+  _settingsOpen = false;
+}
+
+export async function loadSettingsFromServer() {
+  try {
+    _settings = await fetchSettings();
+  } catch {
+    _settings = { providers: [], featureAssignments: {} };
+  }
+}
+
+export async function saveSettingsToServer(settings: AppSettings) {
+  await postSettings(settings);
+  _settings = settings;
 }
 
 export async function saveReviewToFile() {

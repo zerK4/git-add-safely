@@ -172,3 +172,41 @@ export async function persistMessage(conversationId: number, role: "user" | "ass
     body: JSON.stringify({ conversation_id: conversationId, role, content }),
   });
 }
+
+// --- AI Settings ---
+
+export type AIProviderType = "anthropic" | "google" | "openai" | "openai-compatible";
+
+export interface AIProviderConfig {
+  id: string;
+  name: string;
+  type: AIProviderType;
+  apiKey: string;
+  baseURL?: string;
+  model?: string;
+}
+
+export interface FeatureAssignments {
+  generateCommit?: string;
+  codeReview?: string;
+}
+
+export interface AppSettings {
+  providers: AIProviderConfig[];
+  featureAssignments: FeatureAssignments;
+}
+
+export async function fetchSettings(): Promise<AppSettings> {
+  const res = await fetch("/api/settings");
+  if (!res.ok) throw new Error(`Failed to fetch settings: ${res.status}`);
+  return res.json();
+}
+
+export async function postSettings(settings: AppSettings): Promise<{ ok: boolean }> {
+  const res = await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  return res.json();
+}
