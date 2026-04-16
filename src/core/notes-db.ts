@@ -20,12 +20,14 @@ function getDb(repoRoot: string): Database {
       content     TEXT    NOT NULL,
       author_name  TEXT    NOT NULL DEFAULT '',
       author_email TEXT    NOT NULL DEFAULT '',
+      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (file, line_no)
     )
   `);
-  // migrate existing DBs that lack author columns
+  // migrate existing DBs that lack columns
   try { db.run("ALTER TABLE notes ADD COLUMN author_name TEXT NOT NULL DEFAULT ''"); } catch {}
   try { db.run("ALTER TABLE notes ADD COLUMN author_email TEXT NOT NULL DEFAULT ''"); } catch {}
+  try { db.run("ALTER TABLE notes ADD COLUMN created_at TEXT NOT NULL DEFAULT ''"); } catch {}
   return db;
 }
 
@@ -47,7 +49,7 @@ export function setNote(repoRoot: string, file: string, lineNo: number, content:
   const db = getDb(repoRoot);
   if (content.trim()) {
     db.run(
-      "INSERT INTO notes (file, line_no, content, author_name, author_email) VALUES (?, ?, ?, ?, ?) ON CONFLICT(file, line_no) DO UPDATE SET content = excluded.content, author_name = excluded.author_name, author_email = excluded.author_email",
+      "INSERT INTO notes (file, line_no, content, author_name, author_email, created_at) VALUES (?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(file, line_no) DO UPDATE SET content = excluded.content, author_name = excluded.author_name, author_email = excluded.author_email",
       [file, lineNo, content, authorName, authorEmail]
     );
   } else {
@@ -88,25 +90,27 @@ export interface NoteEntry {
   authorName: string;
   authorEmail: string;
   gravatarHash: string;
+  createdAt: string;
 }
 
 export function getNotesForFile(repoRoot: string, file: string): Record<string, NoteEntry> {
   const db = getDb(repoRoot);
-  const rows = db.query<{ line_no: number; content: string; author_name: string; author_email: string }, [string]>(
-    "SELECT line_no, content, author_name, author_email FROM notes WHERE file = ?"
+  const rows = db.query<{ line_no: number; content: string; author_name: string; author_email: string; created_at: string }, [string]>(
+    "SELECT line_no, content, author_name, author_email, created_at FROM notes WHERE file = ?"
   ).all(file);
   return Object.fromEntries(rows.map((r) => [String(r.line_no), {
     content: r.content,
     authorName: r.author_name,
     authorEmail: r.author_email,
     gravatarHash: r.author_email ? gravatarHash(r.author_email) : "",
+    createdAt: r.created_at,
   }]));
 }
 
 export function getAllNotes(repoRoot: string): Record<string, Record<string, NoteEntry>> {
   const db = getDb(repoRoot);
-  const rows = db.query<{ file: string; line_no: number; content: string; author_name: string; author_email: string }, []>(
-    "SELECT file, line_no, content, author_name, author_email FROM notes ORDER BY file, line_no"
+  const rows = db.query<{ file: string; line_no: number; content: string; author_name: string; author_email: string; created_at: string }, []>(
+    "SELECT file, line_no, content, author_name, author_email, created_at FROM notes ORDER BY file, line_no"
   ).all();
   const result: Record<string, Record<string, NoteEntry>> = {};
   for (const row of rows) {
@@ -116,6 +120,7 @@ export function getAllNotes(repoRoot: string): Record<string, Record<string, Not
       authorName: row.author_name,
       authorEmail: row.author_email,
       gravatarHash: row.author_email ? gravatarHash(row.author_email) : "",
+      createdAt: row.created_at,
     };
   }
   return result;

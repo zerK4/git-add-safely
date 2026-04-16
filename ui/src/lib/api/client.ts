@@ -69,6 +69,7 @@ export interface NoteEntry {
   authorName: string;
   authorEmail: string;
   gravatarHash: string;
+  createdAt: string;
 }
 
 export async function fetchNotes(filePath: string): Promise<Record<string, NoteEntry>> {

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Plus, MessageSquare, Trash2 } from "@lucide/svelte";
+  import { Plus, MessageSquare } from "@lucide/svelte";
   import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "$lib/components/ui/tooltip";
   import type { DiffLine } from "$lib/types";
   import InlineNote from "./InlineNote.svelte";
+  import NoteCard from "./NoteCard.svelte";
   import { store, openNoteEditor, closeNoteEditor, saveNote, deleteNote, getNote } from "$lib/stores/app.svelte";
 
   let { line }: { line: DiffLine } = $props();
-  let confirmDeleteIdx = $state<number | null>(null);
 
   const bgClass = $derived(
     line.type === "add"
@@ -31,6 +31,22 @@
   const isNoteOpen = $derived(store.activeNoteIndex === line.rawIndex);
   const existingNote = $derived(
     store.selectedFile ? getNote(store.selectedFile, line.rawIndex) : undefined
+  );
+
+  const quotedLineBg = $derived(
+    line.type === "add"
+      ? "bg-status-good/6"
+      : line.type === "remove"
+        ? "bg-destructive/6"
+        : "bg-muted/30"
+  );
+
+  const quotedLineText = $derived(
+    line.type === "add"
+      ? "text-status-good/70"
+      : line.type === "remove"
+        ? "text-destructive/70"
+        : "text-muted-foreground/60"
   );
 
   // Warnings that match this line (by new or old line number)
@@ -103,40 +119,16 @@
   {/each}
 
   {#if existingNote && !isNoteOpen}
-    {@const noteIdx = line.rawIndex}
-    <div class="flex items-start gap-2 bg-primary/5 border-b border-primary/15 px-4 py-2 pl-7">
-      {#if existingNote.gravatarHash}
-        <img src="https://www.gravatar.com/avatar/{existingNote.gravatarHash}?s=20&d=identicon" alt={existingNote.authorName} class="size-4 rounded-full shrink-0 mt-0.5" />
-      {:else}
-        <MessageSquare class="size-3 text-primary mt-0.5 shrink-0" />
-      {/if}
-      <div class="flex flex-col flex-1 min-w-0 gap-0.5">
-        {#if existingNote.authorName}
-          <span class="text-[10px] text-muted-foreground/60 font-sans">{existingNote.authorName}</span>
-        {/if}
-        <pre class="text-xs text-muted-foreground whitespace-pre-wrap font-sans">{existingNote.content}</pre>
-      </div>
-      <div class="sticky right-2 shrink-0 flex items-center gap-1.5 ml-2">
-        {#if confirmDeleteIdx === noteIdx}
-          <span class="text-xs text-destructive font-sans">Sure?</span>
-          <button
-            class="text-xs px-1.5 py-0.5 rounded bg-destructive/15 border border-destructive/40 text-destructive hover:bg-destructive/25 transition-colors font-sans"
-            onclick={() => { confirmDeleteIdx = null; deleteNote(noteIdx); }}
-          >Yes</button>
-          <button
-            class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-accent/40 transition-colors font-sans"
-            onclick={() => confirmDeleteIdx = null}
-          >No</button>
-        {:else}
-          <button
-            class="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:border-destructive/50 hover:text-destructive hover:bg-destructive/8 transition-colors font-sans"
-            onclick={() => confirmDeleteIdx = noteIdx}
-          >
-            <Trash2 class="size-3" />
-          </button>
-        {/if}
-      </div>
-    </div>
+    <NoteCard
+      note={existingNote}
+      rawIndex={line.rawIndex}
+      quotedContent={line.content}
+      quotedPrefix={linePrefix}
+      quotedBg={quotedLineBg}
+      quotedText={quotedLineText}
+      onEdit={() => openNoteEditor(line.rawIndex)}
+      onDelete={() => deleteNote(line.rawIndex)}
+    />
   {/if}
 
   {#if isNoteOpen}

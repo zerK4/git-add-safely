@@ -113,7 +113,7 @@
             No changes to display
         </div>
     {:else}
-        <div class="diff-scroll flex-1 overflow-auto bg-background" style="height:0">
+        <div class="diff-scroll flex-1 overflow-auto bg-background [container-type:inline-size]" style="height:0">
             <div class="{store.diffMode === 'unified' ? 'min-w-max' : 'h-full'}">
                 {#if store.diffMode === "unified"}
                     {#each store.parsedDiff.hunks as hunk}
@@ -127,7 +127,7 @@
                 {:else if store.splitRows}
                     <div class="flex h-full">
                         <!-- Left column -->
-                        <div class="w-1/2 overflow-x-auto border-r border-border split-col">
+                        <div class="w-1/2 overflow-x-auto border-r border-border split-col [container-type:inline-size]">
                             <div class="min-w-max">
                                 {#each store.splitRows as hunkRows, i}
                                     <SplitColumn rows={hunkRows} side="left" hunkHeader={store.parsedDiff.hunks[i]?.header ?? ""} />
@@ -135,7 +135,7 @@
                             </div>
                         </div>
                         <!-- Right column -->
-                        <div class="w-1/2 overflow-x-auto split-col">
+                        <div class="w-1/2 overflow-x-auto split-col [container-type:inline-size]">
                             <div class="min-w-max">
                                 {#each store.splitRows as hunkRows, i}
                                     <SplitColumn rows={hunkRows} side="right" hunkHeader={store.parsedDiff.hunks[i]?.header ?? ""} />
