@@ -100,9 +100,8 @@ export async function loadContext() {
     _unstagedFiles = _context.unstagedFiles ?? [];
     _watchMode = _context.watchMode ?? false;
 
-    // Load stats, notes, and settings in parallel, non-blocking
-    Promise.all([fetchDiffStats(), fetchAllNotes(), fetchSettings()]).then(([stats, allNotes, settings]) => {
-      _settings = settings;
+    // Load stats and notes in parallel, non-blocking
+    Promise.all([fetchDiffStats(), fetchAllNotes()]).then(([stats, allNotes]) => {
       _diffStats = stats;
       for (const [filePath, lineMap] of Object.entries(allNotes)) {
         for (const [lineNo, entry] of Object.entries(lineMap)) {
@@ -110,6 +109,9 @@ export async function loadContext() {
         }
       }
     }).catch(() => {});
+
+    // Load settings separately so one failure can't block the other
+    fetchSettings().then((s) => { _settings = s; }).catch(() => {});
 
     // In watch mode, connect SSE for live updates
     if (_watchMode) {

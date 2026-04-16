@@ -70,6 +70,16 @@ export class SecretScanner {
                 return;
               }
 
+              // Skip TypeScript type/interface field declarations (e.g. `apiKey: string;`)
+              if (/^\s*\w+\??\s*:\s*\w[\w<>\[\] |&]*\s*;?\s*$/.test(line)) {
+                return;
+              }
+
+              // Skip variable declarations with no value (let/const with type only)
+              if (/^\s*(let|const|var)\s+\w+\s*=\s*\$state\b/.test(line)) {
+                return;
+              }
+
               // For test files, only flag high-confidence patterns
               if (isTestFile) {
                 const highConfidencePatterns = [

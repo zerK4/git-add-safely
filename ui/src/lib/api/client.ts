@@ -208,5 +208,6 @@ export async function postSettings(settings: AppSettings): Promise<{ ok: boolean
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   });
+  if (!res.ok) throw new Error(`Failed to save settings: ${res.status}`);
   return res.json();
 }

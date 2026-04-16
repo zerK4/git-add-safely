@@ -1,6 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join, extname } from "node:path";
+import { readSettings, writeSettings } from "../core/settings";
+import { streamAIResponse } from "../core/ai-runner";
+import { getProviderForFeature } from "../core/settings";
 import { GitWatcher, getWatchStatus } from "../core/watcher";
 import { SecretScanner } from "../core/scanner";
 import {
@@ -192,35 +195,26 @@ export class WatchModeServer {
           if (!diff.trim()) return Response.json({ error: "No staged changes" }, { status: 400 });
 
           const prompt = `Generate a concise conventional commit message for this diff. Output ONLY the commit message, nothing else.\n\nDiff:\n${diff.slice(0, 8000)}`;
+          const provider = getProviderForFeature("generateCommit");
 
           const stream = new ReadableStream({
-            async start(controller) {
+            start(controller) {
               const enc = new TextEncoder();
-              try {
-                const proc = spawn("claude", ["--print", "--output-format", "stream-json", "--verbose"], {
-                  stdio: ["pipe", "pipe", "pipe"],
-                });
-                proc.stdin?.write(prompt);
-                proc.stdin?.end();
-                for await (const chunk of proc.stdout as AsyncIterable<Buffer>) {
-                  for (const line of chunk.toString().split("\n").filter(Boolean)) {
-                    try {
-                      const parsed = JSON.parse(line);
-                      if (parsed.type === "assistant" && parsed.message?.content) {
-                        for (const block of parsed.message.content) {
-                          if (block.type === "text") {
-                            controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "text", text: block.text })}\n\n`));
-                          }
-                        }
-                      }
-                    } catch {}
-                  }
-                }
-              } catch (e: any) {
-                controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`));
+              let closed = false;
+
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
               }
-              controller.enqueue(enc.encode("data: [DONE]\n\n"));
-              controller.close();
+
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+
+              streamAIResponse(prompt, provider, self.repoRoot, send, finish);
             },
           });
           return new Response(stream, {
@@ -281,6 +275,17 @@ export class WatchModeServer {
         if (url.pathname === "/api/history/messages" && req.method === "POST") {
           const body = await req.json() as { conversation_id: number; role: string; content: string };
           addMessage(body.conversation_id, body.role as any, body.content);
+          return Response.json({ ok: true }, { headers });
+        }
+
+        // --- Settings ---
+        if (url.pathname === "/api/settings" && req.method === "GET") {
+          return Response.json(readSettings(), { headers });
+        }
+
+        if (url.pathname === "/api/settings" && req.method === "POST") {
+          const body = await req.json();
+          writeSettings(body);
           return Response.json({ ok: true }, { headers });
         }
 

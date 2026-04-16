@@ -20,9 +20,9 @@ function buildModel(provider: AIProviderConfig) {
     case "google":
       return createGoogleGenerativeAI({ apiKey: provider.apiKey })(modelId);
     case "openai":
-      return createOpenAI({ apiKey: provider.apiKey })(modelId);
+      return createOpenAI({ apiKey: provider.apiKey }).chat(modelId);
     case "openai-compatible":
-      return createOpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL })(modelId);
+      return createOpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL }).chat(modelId);
   }
 }
 
@@ -78,12 +78,17 @@ export function streamAIResponse(
   const model = buildModel(provider);
   (async () => {
     try {
-      const result = await streamText({ model, prompt });
+      const result = await streamText({ model, prompt, maxRetries: 0 });
       for await (const chunk of result.textStream) {
         send({ type: "text", text: chunk });
       }
     } catch (err) {
-      send({ type: "error", error: (err as Error).message });
+      // Extract clean message — Vercel AI SDK errors are verbose objects
+      const e = err as any;
+      const msg = e?.responseBody
+        ? (() => { try { return JSON.parse(e.responseBody)?.error?.message ?? e.message; } catch { return e.message; } })()
+        : (e?.message ?? String(err));
+      send({ type: "error", error: msg });
     } finally {
       finish();
     }
