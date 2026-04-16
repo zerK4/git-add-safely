@@ -1,6 +1,5 @@
 <script lang="ts">
   import { AlertTriangle, MessageSquare, Plus, Minus } from "@lucide/svelte";
-  import { Badge } from "$lib/components/ui/badge";
   import AuroraLoadingBar from "$lib/components/ui/aurora-loading-bar.svelte";
   import type { FileStatus } from "$lib/types";
 
@@ -30,15 +29,19 @@
 
   let loading = $state(false);
 
-  const statusMeta: Record<string, { label: string; class: string }> = {
-    added:    { label: "A", class: "bg-status-good/15 text-status-good border-status-good/25 hover:bg-status-good/20" },
-    modified: { label: "M", class: "bg-status-warn/15 text-status-warn border-status-warn/25 hover:bg-status-warn/20" },
-    deleted:  { label: "D", class: "bg-destructive/15 text-destructive border-destructive/25 hover:bg-destructive/20" },
-    renamed:  { label: "R", class: "bg-primary/15 text-primary border-primary/25 hover:bg-primary/20" },
+  const statusColor: Record<string, string> = {
+    added:    "bg-status-good",
+    modified: "bg-status-warn",
+    deleted:  "bg-destructive",
+    renamed:  "bg-primary",
   };
 
-  const meta = $derived(statusMeta[file.status] ?? { label: "?", class: "bg-muted text-muted-foreground" });
+  const dot = $derived(statusColor[file.status] ?? "bg-muted-foreground/40");
   const filename = $derived(file.path.split("/").pop() ?? file.path);
+  const dir = $derived((() => {
+    const parts = file.path.split("/");
+    return parts.length > 1 ? parts.slice(0, -1).join("/") + "/" : "";
+  })());
 
   async function handleStage(e: MouseEvent) {
     e.stopPropagation();
@@ -58,47 +61,52 @@
 <div class="group relative">
   <AuroraLoadingBar active={loading} />
   <button
-    class="w-full flex items-center gap-2 px-3 py-1 text-left transition-colors rounded-none
-      {isSelected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'}
-      {hasWarning && !isSelected ? 'bg-destructive/5 hover:bg-destructive/10' : ''}
-      {loading ? 'opacity-60 pointer-events-none' : ''}"
+    class="w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors
+      {isSelected
+        ? 'bg-accent/80 text-accent-foreground'
+        : 'text-foreground/80 hover:bg-accent/40 hover:text-foreground'}
+      {hasWarning && !isSelected ? 'bg-status-warn/5' : ''}
+      {loading ? 'opacity-50 pointer-events-none' : ''}"
     {onclick}
   >
-    <Badge class="text-[10px] px-1 py-0 h-4 font-bold shrink-0 {meta.class}">{meta.label}</Badge>
-    <span class="font-mono text-xs truncate">{filename}</span>
+    <!-- Status dot -->
+    <span class="size-1.5 rounded-full shrink-0 {dot} {isSelected ? 'opacity-100' : 'opacity-70'}"></span>
 
-    <div class="ml-auto flex items-center gap-1.5 shrink-0">
+    <!-- Filename -->
+    <span class="flex-1 min-w-0 overflow-hidden" title={file.path}>
+      <span class="font-mono text-xs truncate leading-none block">{filename}</span>
+    </span>
+
+    <!-- Right-side indicators -->
+    <span class="flex items-center gap-1.5 shrink-0 {watchMode ? 'mr-5' : ''}">
       {#if diffStats && (diffStats.added > 0 || diffStats.removed > 0)}
-        <span class="font-mono text-[10px] leading-none">
-          {#if diffStats.added > 0}<span class="text-status-good">+{diffStats.added}</span>{/if}
-          {#if diffStats.added > 0 && diffStats.removed > 0}<span class="text-muted-foreground/40"> </span>{/if}
-          {#if diffStats.removed > 0}<span class="text-destructive">-{diffStats.removed}</span>{/if}
+        <span class="font-mono text-[10px] leading-none tabular-nums">
+          {#if diffStats.added > 0}<span class="text-status-good">+{diffStats.added}</span>{/if}{#if diffStats.added > 0 && diffStats.removed > 0}<span class="text-muted-foreground/30"> </span>{/if}{#if diffStats.removed > 0}<span class="text-destructive">-{diffStats.removed}</span>{/if}
         </span>
       {/if}
       {#if noteCount > 0}
-        <span class="flex items-center gap-0.5 text-primary/70">
-          <MessageSquare class="size-3" />
-          <span class="text-[10px] font-sans leading-none">{noteCount}</span>
+        <span class="flex items-center gap-0.5 text-primary/60">
+          <MessageSquare class="size-2.5" />
+          <span class="text-[9px] font-sans leading-none">{noteCount}</span>
         </span>
       {/if}
       {#if hasWarning}
-        <AlertTriangle class="size-3 text-status-warn" />
+        <AlertTriangle class="size-3 text-status-warn/80" />
       {/if}
-      <!-- Spacer for stage button -->
-      {#if watchMode}
-        <span class="w-5"></span>
-      {/if}
-    </div>
+    </span>
   </button>
 
-  <!-- Stage / Unstage button — appears on hover, absolute right -->
+  <!-- Stage / Unstage button -->
   {#if watchMode}
     {#if staged && onUnstage}
       <button
         class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100
                flex items-center justify-center w-5 h-5 rounded
-               text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10
-               transition-all duration-150 disabled:opacity-30"
+               text-destructive bg-destructive/15 border border-destructive/30
+               hover:bg-destructive/25 hover:border-destructive/50
+               transition-all duration-150 hover:scale-110 active:scale-95
+               hover:shadow-[0_0_6px_1px_color-mix(in_oklch,var(--destructive)_30%,transparent)]
+               disabled:opacity-30"
         title="Unstage"
         disabled={loading}
         onclick={handleUnstage}
@@ -109,8 +117,11 @@
       <button
         class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100
                flex items-center justify-center w-5 h-5 rounded
-               text-muted-foreground/60 hover:text-status-good hover:bg-status-good/10
-               transition-all duration-150 disabled:opacity-30"
+               text-status-good bg-status-good/15 border border-status-good/30
+               hover:bg-status-good/25 hover:border-status-good/50
+               transition-all duration-150 hover:scale-110 active:scale-95
+               hover:shadow-[0_0_6px_1px_color-mix(in_oklch,var(--status-good)_30%,transparent)]
+               disabled:opacity-30"
         title="Stage"
         disabled={loading}
         onclick={handleStage}

@@ -420,14 +420,18 @@ export class WebUIPlugin implements Plugin {
         // --- Diff stats ---
 
         if (url.pathname === "/api/diff-stats") {
-          const result = spawnSync("git", ["diff", "--cached", "--numstat"], { encoding: "utf-8" });
-          const stats: Record<string, { added: number; removed: number }> = {};
-          for (const line of result.stdout.trim().split("\n").filter(Boolean)) {
-            const [added, removed, ...fileParts] = line.split("\t");
-            const file = fileParts.join("\t");
-            stats[file] = { added: parseInt(added) || 0, removed: parseInt(removed) || 0 };
-          }
-          return Response.json(stats);
+          const parseNumstat = (output: string) => {
+            const stats: Record<string, { added: number; removed: number }> = {};
+            for (const line of output.trim().split("\n").filter(Boolean)) {
+              const [added, removed, ...fileParts] = line.split("\t");
+              const file = fileParts.join("\t");
+              stats[file] = { added: parseInt(added) || 0, removed: parseInt(removed) || 0 };
+            }
+            return stats;
+          };
+          const staged = parseNumstat(spawnSync("git", ["diff", "--cached", "--numstat"], { encoding: "utf-8" }).stdout);
+          const unstaged = parseNumstat(spawnSync("git", ["diff", "--numstat"], { encoding: "utf-8" }).stdout);
+          return Response.json({ ...unstaged, ...staged });
         }
 
         // --- Inline notes endpoints ---
