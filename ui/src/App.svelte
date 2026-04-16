@@ -6,6 +6,8 @@
     import Footer from "$lib/features/Footer.svelte";
     import { Loader2 } from "@lucide/svelte";
 
+    let historyOpen = $state(false);
+
     $effect(() => {
         loadContext();
     });
@@ -28,10 +30,10 @@
             Failed to load: {store.contextError}
         </div>
     {:else}
-        <Header />
+        <Header onToggleHistory={() => (historyOpen = !historyOpen)} />
         <div class="flex flex-1 overflow-hidden">
             <Sidebar />
-            <MainArea />
+            <MainArea {historyOpen} onCloseHistory={() => (historyOpen = false)} />
         </div>
         <Footer />
     {/if}

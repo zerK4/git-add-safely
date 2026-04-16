@@ -151,3 +151,9 @@
 .diff-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
 .diff-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 .diff-scroll { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+@keyframes aurora-shift {
+    0%   { transform: translateX(-25%); }
+    50%  { transform: translateX(0%); }
+    100% { transform: translateX(-25%); }
+}

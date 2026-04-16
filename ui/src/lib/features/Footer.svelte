@@ -4,6 +4,7 @@
   import { Separator } from "$lib/components/ui/separator";
   import { Badge } from "$lib/components/ui/badge";
   import { approve, cancel, store } from "$lib/stores/app.svelte";
+  import ClaudeStatusBar from "./ClaudeStatusBar.svelte";
 
   let status = $state<"idle" | "approved" | "cancelled">("idle");
 
@@ -26,6 +27,7 @@
   <Separator />
   <footer class="flex items-center gap-3 px-5 py-3 bg-card">
     {#if status === "idle"}
+      <ClaudeStatusBar />
       <span class="text-xs text-muted-foreground mr-auto font-sans">
         {fileCount} file{fileCount !== 1 ? "s" : ""} staged
         {#if store.warningCount > 0}

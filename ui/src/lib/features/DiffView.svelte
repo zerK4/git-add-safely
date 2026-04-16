@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { AlignLeft, Columns2, Loader2, AlertTriangle } from "@lucide/svelte";
+    import { AlignLeft, Columns2, Loader2, AlertTriangle, Bot } from "@lucide/svelte";
     import { Button } from "$lib/components/ui/button";
     import { Separator } from "$lib/components/ui/separator";
-    import { store, setDiffMode } from "$lib/stores/app.svelte";
+    import { store, setDiffMode, startReview, openClaudePanel } from "$lib/stores/app.svelte";
     import DiffLine from "./DiffLine.svelte";
     import SplitDiffLine from "./SplitDiffLine.svelte";
     import WarningPhantomHunk from "./WarningPhantomHunk.svelte";
@@ -53,6 +53,33 @@
                 <Columns2 class="size-3" />
                 Split
             </Button>
+            <div class="w-px h-4 bg-border mx-1"></div>
+            {#if store.claudeStatus === "idle" || store.claudeStatus === "error"}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-7 px-2 text-xs gap-1.5 text-primary hover:text-primary hover:bg-primary/10 border border-transparent hover:border-primary/25"
+                    onclick={() => {
+                        if (store.selectedFile && store.rawDiff) {
+                            startReview(store.selectedFile, store.rawDiff, fileWarnings);
+                        }
+                    }}
+                    disabled={!store.parsedDiff || store.diffLoading}
+                >
+                    <Bot class="size-3" />
+                    Review with Claude
+                </Button>
+            {:else}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-7 px-2 text-xs gap-1.5 text-primary hover:text-primary hover:bg-primary/10"
+                    onclick={openClaudePanel}
+                >
+                    <Bot class="size-3" />
+                    {store.claudeStatus === "working" ? "Claude working..." : "View review"}
+                </Button>
+            {/if}
         </div>
     </div>
     <Separator />

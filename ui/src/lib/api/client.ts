@@ -31,3 +31,56 @@ export async function postApprove(): Promise<void> {
 export async function postCancel(): Promise<void> {
   await fetch("/api/cancel", { method: "POST" });
 }
+
+// --- History ---
+
+export interface Conversation {
+  id: number;
+  repo: string;
+  file: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HistoryMessage {
+  id: number;
+  conversation_id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export async function fetchConversations(all = false): Promise<Conversation[]> {
+  const res = await fetch(`/api/history/conversations${all ? "?all=1" : ""}`);
+  if (!res.ok) throw new Error("Failed to fetch conversations");
+  return res.json();
+}
+
+export async function createConversation(file: string, title: string): Promise<number> {
+  const res = await fetch("/api/history/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file, title }),
+  });
+  const data = await res.json();
+  return data.id;
+}
+
+export async function deleteConversation(id: number): Promise<void> {
+  await fetch(`/api/history/conversations?id=${id}`, { method: "DELETE" });
+}
+
+export async function fetchMessages(conversationId: number): Promise<HistoryMessage[]> {
+  const res = await fetch(`/api/history/messages?conversation_id=${conversationId}`);
+  if (!res.ok) throw new Error("Failed to fetch messages");
+  return res.json();
+}
+
+export async function persistMessage(conversationId: number, role: "user" | "assistant", content: string): Promise<void> {
+  await fetch("/api/history/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversation_id: conversationId, role, content }),
+  });
+}

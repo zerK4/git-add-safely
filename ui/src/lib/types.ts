@@ -46,3 +46,9 @@ export interface SplitRow {
   right: DiffLine | null;
   rawIndex: number;
 }
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  streaming?: boolean;
+}
