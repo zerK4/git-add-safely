@@ -19,9 +19,16 @@ function parsePortcelain(output: string): WatchStatus {
     const X = xy[0]; // staged status
     const Y = xy[1]; // unstaged status
 
-    // Untracked
+    // Untracked — git reports untracked dirs as "src/routes/" (trailing slash)
     if (X === "?" && Y === "?") {
-      untracked.push({ path, status: "added", staged: false });
+      if (path.endsWith("/")) {
+        const expanded = spawnSync("git", ["ls-files", "--others", "--exclude-standard", path], { encoding: "utf-8" });
+        for (const f of (expanded.stdout ?? "").split("\n").filter(Boolean)) {
+          untracked.push({ path: f, status: "added", staged: false });
+        }
+      } else {
+        untracked.push({ path, status: "added", staged: false });
+      }
       continue;
     }
 

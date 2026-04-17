@@ -1,7 +1,8 @@
 <script lang="ts">
   import { fetchPRInfo } from "$lib/api/client";
   import type { PRInfo } from "$lib/api/client";
-  import { store, enterPRMode, selectPRFile, exitPRMode, setPRView } from "$lib/stores/app.svelte";
+  import { store, exitPRMode } from "$lib/stores/app.svelte";
+  import { goto } from "$app/navigation";
   import { GitPullRequest, FileCode, ArrowLeft, CheckCircle, XCircle, Clock, MessageSquare, Code, MessageCircle } from "@lucide/svelte";
 
   let loading = $state(true);
@@ -16,12 +17,8 @@
     });
   });
 
-  async function openPR(pr: PRInfo) {
-    const files = pr.diff
-      ? [...pr.diff.matchAll(/^diff --git a\/(.+?) b\/.+$/gm)].map(m => m[1])
-      : [];
-    await enterPRMode(pr.number, files, pr.diff, pr);
-    if (files.length > 0) await selectPRFile(files[0]);
+  function openPR(pr: PRInfo) {
+    goto(`/pr/${pr.number}`);
   }
 
   function formatDate(iso: string) {
@@ -59,7 +56,7 @@
     <div class="flex items-center gap-2 px-3 py-2 shrink-0 border-b border-border/60">
       <button
         class="flex items-center justify-center w-5 h-5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 transition-colors"
-        onclick={exitPRMode}
+        onclick={() => { exitPRMode(); goto('/'); }}
         title="Back to PR list"
       >
         <ArrowLeft class="size-3.5" />
@@ -76,7 +73,7 @@
                {store.prView === 'code'
                  ? 'text-foreground border-b-2 border-primary bg-accent/30'
                  : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/20'}"
-        onclick={() => setPRView("code")}
+        onclick={() => goto(`/pr/${store.activePR}`)}
       >
         <Code class="size-3" />
         Code
@@ -86,7 +83,7 @@
                {store.prView === 'conversation'
                  ? 'text-foreground border-b-2 border-primary bg-accent/30'
                  : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/20'}"
-        onclick={() => setPRView("conversation")}
+        onclick={() => goto(`/pr/${store.activePR}/conversation`)}
       >
         <MessageCircle class="size-3" />
         Conversation
@@ -107,7 +104,7 @@
                  {store.prSelectedFile === file
                    ? 'bg-accent text-accent-foreground'
                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}"
-          onclick={() => selectPRFile(file)}
+          onclick={() => goto(`/pr/${store.activePR}/files/${file}`)}
         >
           <FileCode class="size-3 shrink-0 opacity-50" />
           <span class="text-[11px] font-mono truncate flex-1">{file}</span>

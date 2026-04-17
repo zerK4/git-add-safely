@@ -1,26 +1,11 @@
-import { defineConfig } from "vite";
-import { svelte } from "@sveltejs/vite-plugin-svelte";
-import tailwindcss from "@tailwindcss/vite";
-import path from "path";
+import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [svelte(), tailwindcss()],
-  resolve: {
-    alias: {
-      $lib: path.resolve("./src/lib"),
-    },
-  },
-  build: {
-    outDir: "../dist/ui",
-    emptyOutDir: true,
-  },
+export default {
+  plugins: [sveltekit(), tailwindcss()],
   server: {
     proxy: {
-      "/api": {
-        target: "http://localhost:3450",
-        changeOrigin: true,
-      },
+      '/api': { target: 'http://localhost:3450', changeOrigin: true },
     },
   },
-});
+};

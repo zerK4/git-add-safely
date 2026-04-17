@@ -2,7 +2,7 @@
   import { Settings, Plus, Trash2, Check, ArrowLeft, GitBranch } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Separator } from "$lib/components/ui/separator";
-  import { push } from "svelte-spa-router";
+  import { goto } from "$app/navigation";
   import { store, loadSettingsFromServer, saveSettingsToServer } from "$lib/stores/app.svelte";
   import type { AIProviderConfig, AppSettings, AIProviderType, FeatureAssignments, UIPreferences } from "$lib/api/client";
 
@@ -171,7 +171,7 @@
         variant="ghost"
         size="sm"
         class="h-7 px-2.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-        onclick={() => push("/")}
+        onclick={() => goto("/")}
       >
         <ArrowLeft class="size-3.5" />
         Back
