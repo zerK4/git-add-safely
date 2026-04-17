@@ -632,9 +632,7 @@ export class WebUIPlugin implements Plugin {
               if (rcResult.status === 0 && rcResult.stdout.trim()) {
                 try {
                   const raw = rcResult.stdout.trim();
-                  // --paginate may concat multiple arrays
-                  const fixed = "[" + raw.replace(/\]\s*\[/g, ",") + "]";
-                  const flat: any[] = JSON.parse(fixed);
+                  const flat: any[] = JSON.parse(raw.replace(/\]\s*\[/g, ","));
                   reviewComments = flat.map((c: any) => ({
                     id: c.id,
                     inReplyToId: c.in_reply_to_id ?? null,
@@ -650,11 +648,36 @@ export class WebUIPlugin implements Plugin {
               }
             }
 
+            let timelineEvents: any[] = [];
+            if (nameWithOwner) {
+              const tlResult = spawnSync(
+                "gh", ["api", `repos/${nameWithOwner}/issues/${pr.number}/timeline`, "--paginate"],
+                { encoding: "utf-8" }
+              );
+              if (tlResult.status === 0 && tlResult.stdout.trim()) {
+                try {
+                  const raw = tlResult.stdout.trim();
+                  const all: any[] = JSON.parse(raw.replace(/\]\s*\[/g, ","));
+                  timelineEvents = all
+                    .filter((e: any) => ["committed", "review_requested", "review_request_removed"].includes(e.event))
+                    .map((e: any) => ({
+                      event: e.event,
+                      actor: e.actor?.login ?? e.author?.login ?? "unknown",
+                      actorName: e.actor?.login ?? e.author?.name ?? e.committer?.name ?? "unknown",
+                      createdAt: e.created_at ?? e.committer?.date ?? "",
+                      sha: e.sha?.slice(0, 7) ?? "",
+                      message: e.message?.split("\n")[0] ?? "",
+                      requestedReviewer: e.requested_reviewer?.login ?? null,
+                    }));
+                } catch {}
+              }
+            }
+
             // Get PR diff
             const diffResult = spawnSync("gh", ["pr", "diff", String(pr.number)], { encoding: "utf-8" });
             const diff = diffResult.status === 0 ? diffResult.stdout : "";
 
-            return { ...pr, comments, reviews, reviewRequests, reviewComments, diff };
+            return { ...pr, comments, reviews, reviewRequests, reviewComments, timelineEvents, diff };
           });
 
           return Response.json({ prs: enriched });
@@ -695,8 +718,7 @@ export class WebUIPlugin implements Plugin {
           try {
             const raw = commentsResult.stdout.trim();
             if (raw.startsWith("[")) {
-              const fixed = "[" + raw.replace(/\]\s*\[/g, ",") + "]";
-              rawComments = JSON.parse(fixed);
+              rawComments = JSON.parse(raw.replace(/\]\s*\[/g, ","));
             }
           } catch {}
 

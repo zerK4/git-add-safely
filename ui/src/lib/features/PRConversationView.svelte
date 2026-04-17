@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { store } from "$lib/stores/app.svelte";
+  import { store, startPRAnalysis } from "$lib/stores/app.svelte";
   import { marked } from "marked";
-  import { GitPullRequest, CheckCircle, XCircle, MessageSquare, Reply, ExternalLink, FileCode } from "@lucide/svelte";
-  import type { PRReviewComment } from "$lib/api/client";
+  import { GitPullRequest, CheckCircle, XCircle, MessageSquare, Reply, ExternalLink, FileCode, GitCommit, Eye, Sparkles } from "@lucide/svelte";
+  import type { PRReviewComment, PRTimelineEvent } from "$lib/api/client";
 
   const pr = $derived(store.prData);
 
@@ -10,8 +10,10 @@
     if (!iso) return "";
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    const diff = Date.now() - d.getTime();
-    const days = Math.floor(diff / 86400000);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((todayStart - dStart) / 86400000);
     if (days === 0) return "today";
     if (days === 1) return "yesterday";
     if (days < 30) return `${days}d ago`;
@@ -20,6 +22,11 @@
 
   function initials(login: string) {
     return (login ?? "?").slice(0, 2).toUpperCase();
+  }
+
+  function avatarUrl(login: string) {
+    if (!login || login === "unknown" || login === "?" || /\s/.test(login)) return null;
+    return `https://github.com/${login}.png?size=56`;
   }
 
   function reviewStateColor(state: string) {
@@ -37,7 +44,8 @@
   type FeedItem =
     | { type: "review"; date: string; data: any }
     | { type: "comment"; date: string; data: any }
-    | { type: "thread"; date: string; parent: PRReviewComment; replies: PRReviewComment[] };
+    | { type: "thread"; date: string; parent: PRReviewComment; replies: PRReviewComment[] }
+    | { type: "event"; date: string; data: PRTimelineEvent };
 
   function buildFeed(pr: NonNullable<typeof store.prData>): FeedItem[] {
     const items: FeedItem[] = [];
@@ -66,6 +74,10 @@
       const replies = (repliesMap.get(parent.id) ?? [])
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       items.push({ type: "thread", date: parent.createdAt, parent, replies });
+    }
+
+    for (const e of pr.timelineEvents ?? []) {
+      items.push({ type: "event", date: e.createdAt, data: e });
     }
 
     return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -136,6 +148,17 @@
         <span class="text-sm font-semibold text-foreground">{pr.title}</span>
         <span class="text-xs text-muted-foreground/60 ml-2">#{pr.number}</span>
       </div>
+      <button
+        onclick={() => startPRAnalysis(pr)}
+        disabled={store.prAnalyzeStreaming}
+        class="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border transition-colors shrink-0
+               {store.prAnalyzePanelOpen
+                 ? 'bg-primary/20 border-primary/40 text-primary'
+                 : 'bg-muted/20 border-border text-muted-foreground/60 hover:text-foreground hover:border-border/80'}
+               disabled:opacity-40">
+        <Sparkles class="size-3" />
+        {store.prAnalyzeStreaming ? "Analyzing…" : "Analyze with Claude"}
+      </button>
       <a href={pr.url} target="_blank" rel="noopener"
         class="text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0">
         <ExternalLink class="size-3.5" />
@@ -149,19 +172,38 @@
 
         <div class="flex flex-col gap-5">
           {#each feed as item}
-            <div class="flex items-start gap-4">
+            {@const avatarLogin = item.type === "thread" ? item.parent.author : item.type === "event" ? item.data.actor : (item.data.author?.login ?? item.data.author ?? "?")}
+            {@const avatarDisplayName = item.type === "event" ? (item.data.actorName ?? item.data.actor) : avatarLogin}
+            {@const avatarImg = avatarUrl(avatarLogin)}
+            <div class="flex {item.type === 'event' ? 'items-center' : 'items-start'} gap-4">
 
               <!-- Avatar dot -->
-              <div class="shrink-0 relative z-10 mt-0.5">
-                {#if item.type === "thread"}
-                  <div class="size-7 rounded-full flex items-center justify-center text-[10px] font-bold"
-                    style="background: rgba(84,153,232,0.15); border: 1px solid rgba(84,153,232,0.25); color: #5499e8;">
-                    {initials(item.parent.author)}
+              <div class="shrink-0 relative z-10 {item.type !== 'event' ? 'mt-0.5' : ''}">
+                {#if item.type === "event"}
+                  <div class="relative size-7">
+                    {#if avatarImg}
+                      <img src={avatarImg} alt={avatarLogin} class="size-7 rounded-full object-cover" style="border: 1px solid rgba(84,153,232,0.25);" />
+                    {:else}
+                      <div class="size-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style="background: rgba(84,153,232,0.15); border: 1px solid rgba(84,153,232,0.25); color: #5499e8;">
+                        {initials(avatarDisplayName)}
+                      </div>
+                    {/if}
+                    <div class="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full flex items-center justify-center"
+                      style="background:#0d1117; border: 1px solid rgba(255,255,255,0.1);">
+                      {#if item.data.event === "committed"}
+                        <GitCommit class="size-2 text-muted-foreground/60" />
+                      {:else}
+                        <Eye class="size-2 text-muted-foreground/60" />
+                      {/if}
+                    </div>
                   </div>
+                {:else if avatarImg}
+                  <img src={avatarImg} alt={avatarLogin} class="size-7 rounded-full object-cover" style="border: 1px solid rgba(84,153,232,0.25);" />
                 {:else}
                   <div class="size-7 rounded-full flex items-center justify-center text-[10px] font-bold"
                     style="background: rgba(84,153,232,0.15); border: 1px solid rgba(84,153,232,0.25); color: #5499e8;">
-                    {initials(item.data.author?.login ?? item.data.author ?? "?")}
+                    {initials(avatarDisplayName)}
                   </div>
                 {/if}
               </div>
@@ -243,11 +285,16 @@
                     </div>
                     <!-- Replies -->
                     {#each item.replies as reply}
+                      {@const replyImg = avatarUrl(reply.author)}
                       <div class="flex items-start gap-3 px-4 py-2.5" style="border-bottom:1px solid rgba(255,255,255,0.04);">
-                        <div class="size-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
-                          style="background:rgba(84,153,232,0.1);border:1px solid rgba(84,153,232,0.2);color:#5499e8;">
-                          {initials(reply.author)}
-                        </div>
+                        {#if replyImg}
+                          <img src={replyImg} alt={reply.author} class="size-5 rounded-full object-cover shrink-0 mt-0.5" style="border:1px solid rgba(84,153,232,0.2);" />
+                        {:else}
+                          <div class="size-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
+                            style="background:rgba(84,153,232,0.1);border:1px solid rgba(84,153,232,0.2);color:#5499e8;">
+                            {initials(reply.author)}
+                          </div>
+                        {/if}
                         <div class="flex-1 min-w-0">
                           <div class="flex items-center gap-2 mb-1">
                             <span class="text-[11px] font-semibold text-foreground/80">{reply.author}</span>
@@ -272,6 +319,22 @@
                       {/if}
                     </div>
                   </div>
+                {:else if item.type === "event"}
+                  {@const e = item.data}
+                  <div class="flex items-center gap-2">
+                    {#if e.event === "committed"}
+                      <span class="text-xs text-muted-foreground/70 font-mono">{e.sha}</span>
+                      <span class="text-xs text-muted-foreground/60 truncate">{e.message}</span>
+                      <span class="text-[10px] text-muted-foreground/40">{formatDate(e.createdAt)}</span>
+                    {:else if e.event === "review_requested"}
+                      <span class="text-xs text-muted-foreground/80"><span class="font-semibold">{e.actor}</span> requested a review from <span class="font-semibold">{e.requestedReviewer}</span></span>
+                      <span class="text-[10px] text-muted-foreground/40">{formatDate(e.createdAt)}</span>
+                    {:else if e.event === "review_request_removed"}
+                      <span class="text-xs text-muted-foreground/60"><span class="font-semibold">{e.actor}</span> removed review request from <span class="font-semibold">{e.requestedReviewer}</span></span>
+                      <span class="text-[10px] text-muted-foreground/40">{formatDate(e.createdAt)}</span>
+                    {/if}
+                  </div>
+
                 {/if}
 
               </div>
