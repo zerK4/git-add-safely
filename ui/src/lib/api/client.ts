@@ -206,6 +206,16 @@ export interface PRReviewComment {
   reviewId: number | null;
 }
 
+export interface PRTimelineEvent {
+  event: "committed" | "review_requested" | "review_request_removed";
+  actor: string;
+  actorName: string;
+  createdAt: string;
+  sha: string;
+  message: string;
+  requestedReviewer: string | null;
+}
+
 export interface PRInfo {
   number: number;
   title: string;
@@ -221,6 +231,7 @@ export interface PRInfo {
   reviews: PRReview[];
   reviewRequests: { requestedReviewer: PRAuthor }[];
   reviewComments: PRReviewComment[];
+  timelineEvents: PRTimelineEvent[];
   diff: string;
 }
 
