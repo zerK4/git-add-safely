@@ -5,6 +5,7 @@
   import PRConversationView from "./PRConversationView.svelte";
   import WarningsPanel from "./WarningsPanel.svelte";
   import ClaudePanel from "./ClaudePanel.svelte";
+  import PRAnalyzePanel from "./PRAnalyzePanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
   import ReviewAllView from "./ReviewAllView.svelte";
 
@@ -32,6 +33,10 @@
   <!-- Right panels (order: Claude → ReviewAll pinned → History) -->
   {#if store.claudePanelOpen}
     <ClaudePanel />
+  {/if}
+
+  {#if store.prAnalyzePanelOpen}
+    <PRAnalyzePanel />
   {/if}
 
   {#if store.reviewAllOpen && store.reviewAllPinned}

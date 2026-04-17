@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { store } from "$lib/stores/app.svelte";
+  import { store, startPRAnalysis } from "$lib/stores/app.svelte";
   import { marked } from "marked";
-  import { GitPullRequest, CheckCircle, XCircle, MessageSquare, Reply, ExternalLink, FileCode, GitCommit, Eye } from "@lucide/svelte";
+  import { GitPullRequest, CheckCircle, XCircle, MessageSquare, Reply, ExternalLink, FileCode, GitCommit, Eye, Sparkles } from "@lucide/svelte";
   import type { PRReviewComment, PRTimelineEvent } from "$lib/api/client";
 
   const pr = $derived(store.prData);
@@ -148,6 +148,17 @@
         <span class="text-sm font-semibold text-foreground">{pr.title}</span>
         <span class="text-xs text-muted-foreground/60 ml-2">#{pr.number}</span>
       </div>
+      <button
+        onclick={() => startPRAnalysis(pr)}
+        disabled={store.prAnalyzeStreaming}
+        class="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border transition-colors shrink-0
+               {store.prAnalyzePanelOpen
+                 ? 'bg-primary/20 border-primary/40 text-primary'
+                 : 'bg-muted/20 border-border text-muted-foreground/60 hover:text-foreground hover:border-border/80'}
+               disabled:opacity-40">
+        <Sparkles class="size-3" />
+        {store.prAnalyzeStreaming ? "Analyzing…" : "Analyze with Claude"}
+      </button>
       <a href={pr.url} target="_blank" rel="noopener"
         class="text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0">
         <ExternalLink class="size-3.5" />

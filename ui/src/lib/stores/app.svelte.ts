@@ -48,6 +48,11 @@ let _prSelectedFile = $state<string | null>(null);
 let _prDiffLoading = $state(false);
 let _prFileStats = $state<Record<string, { added: number; removed: number }>>({});
 
+// PR analyze (Claude panel for PR conversation)
+let _prAnalyzePanelOpen = $state(false);
+let _prAnalyzeMessages = $state<ChatMessage[]>([]);
+let _prAnalyzeStreaming = $state(false);
+
 // Derived
 const _noteCountsByFile = $derived<Record<string, number>>(
   Object.keys(_notes).reduce<Record<string, number>>((map, key) => {
@@ -115,6 +120,10 @@ export const store = {
   get prSelectedFile() { return _prSelectedFile; },
   get prDiffLoading() { return _prDiffLoading; },
   get prFileStats() { return _prFileStats; },
+  // PR analyze
+  get prAnalyzePanelOpen() { return _prAnalyzePanelOpen; },
+  get prAnalyzeMessages() { return _prAnalyzeMessages; },
+  get prAnalyzeStreaming() { return _prAnalyzeStreaming; },
 };
 
 // --- Actions ---
@@ -613,4 +622,134 @@ export function exitPRMode() {
   _prRawDiff = null;
   _prReviewThreads = {};
   _prFileStats = {};
+  _prAnalyzePanelOpen = false;
+  _prAnalyzeMessages = [];
+}
+
+export function closePRAnalyzePanel() {
+  _prAnalyzePanelOpen = false;
+  _prAnalyzeMessages = [];
+}
+
+export async function startPRAnalysis(pr: import("$lib/api/client").PRInfo) {
+  _prAnalyzePanelOpen = true;
+  _prAnalyzeStreaming = true;
+  _prAnalyzeMessages = [{ role: "assistant", content: "" }];
+
+  // Build grouped threads (parent + replies)
+  const byId = new Map<number, import("$lib/api/client").PRReviewComment>();
+  for (const c of pr.reviewComments ?? []) byId.set(c.id, c);
+  const parents = (pr.reviewComments ?? []).filter(c => !c.inReplyToId);
+  const repliesMap = new Map<number, import("$lib/api/client").PRReviewComment[]>();
+  for (const c of pr.reviewComments ?? []) {
+    if (c.inReplyToId) {
+      const arr = repliesMap.get(c.inReplyToId) ?? [];
+      arr.push(c);
+      repliesMap.set(c.inReplyToId, arr);
+    }
+  }
+  const reviewComments = parents.map(p => ({
+    author: p.author,
+    path: p.path,
+    line: p.line,
+    body: p.body,
+    diffHunk: p.diffHunk,
+    replies: (repliesMap.get(p.id) ?? []).map(r => ({ author: r.author, body: r.body })),
+  }));
+
+  try {
+    const res = await fetch("/api/pr-analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pr: { number: pr.number, title: pr.title, body: pr.body },
+        reviews: (pr.reviews ?? []).filter(r => r.body?.trim()).map(r => ({
+          author: r.author?.login ?? "unknown",
+          state: r.state,
+          body: r.body,
+          submittedAt: r.submittedAt ?? "",
+        })),
+        reviewComments,
+        comments: (pr.comments ?? []).map(c => ({
+          author: c.author?.login ?? "unknown",
+          body: c.body,
+          createdAt: c.createdAt ?? "",
+        })),
+      }),
+    });
+    if (!res.ok || !res.body) { _prAnalyzeStreaming = false; return; }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") break;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === "text" && parsed.text) {
+            _prAnalyzeMessages[0] = { role: "assistant", content: _prAnalyzeMessages[0].content + parsed.text };
+          }
+        } catch {}
+      }
+    }
+  } finally {
+    _prAnalyzeStreaming = false;
+  }
+}
+
+export async function sendPRAnalyzeMessage(text: string) {
+  if (_prAnalyzeStreaming || !text.trim()) return;
+  _prAnalyzeMessages = [
+    ..._prAnalyzeMessages,
+    { role: "user", content: text },
+    { role: "assistant", content: "" },
+  ];
+  _prAnalyzeStreaming = true;
+  const assistantIdx = _prAnalyzeMessages.length - 1;
+
+  try {
+    const res = await fetch("/api/pr-analyze-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: _prAnalyzeMessages.slice(0, assistantIdx).map(m => ({ role: m.role, content: m.content })),
+      }),
+    });
+    if (!res.ok || !res.body) { _prAnalyzeStreaming = false; return; }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") break;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === "text" && parsed.text) {
+            _prAnalyzeMessages[assistantIdx] = {
+              role: "assistant",
+              content: _prAnalyzeMessages[assistantIdx].content + parsed.text,
+            };
+          }
+        } catch {}
+      }
+    }
+  } finally {
+    _prAnalyzeStreaming = false;
+  }
 }
