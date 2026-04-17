@@ -700,6 +700,89 @@ export class WatchModeServer {
           });
         }
 
+        if (url.pathname === "/api/pr-analyze" && req.method === "POST") {
+          const body = await req.json() as {
+            pr: { number: number; title: string; body: string };
+            reviews: { author: string; state: string; body: string; submittedAt: string }[];
+            reviewComments: { author: string; path: string; line: number | null; body: string; diffHunk: string; replies: { author: string; body: string }[] }[];
+            comments: { author: string; body: string; createdAt: string }[];
+          };
+
+          const reviewSection = body.reviews.filter(r => r.body?.trim()).map(r =>
+            `### Review by ${r.author} (${r.state})\n${r.body}`
+          ).join("\n\n");
+
+          const threadSection = body.reviewComments.map(c => {
+            const location = c.path ? `**${c.path}${c.line ? `:${c.line}` : ""}**` : "";
+            const hunk = c.diffHunk ? `\n\`\`\`diff\n${c.diffHunk.split("\n").slice(-5).join("\n")}\n\`\`\`` : "";
+            const replies = c.replies.length > 0
+              ? "\n" + c.replies.map(r => `> **${r.author}:** ${r.body}`).join("\n")
+              : "";
+            return `${location}${hunk}\n**${c.author}:** ${c.body}${replies}`;
+          }).join("\n\n---\n\n");
+
+          const issueComments = body.comments.filter(c => c.body?.trim()).map(c =>
+            `**${c.author}:** ${c.body}`
+          ).join("\n\n");
+
+          const prompt = `You are analyzing a GitHub Pull Request conversation. The developer wants your help understanding the review feedback and deciding how to respond.
+
+## PR #${body.pr.number}: ${body.pr.title}
+${body.pr.body?.trim() ? `\n${body.pr.body}\n` : ""}
+${reviewSection ? `## Review Summary\n\n${reviewSection}\n` : ""}${threadSection ? `## Inline Code Comments\n\n${threadSection}\n` : ""}${issueComments ? `## General Comments\n\n${issueComments}\n` : ""}
+Please analyze this PR review conversation. Summarize the key findings, highlight what needs to be addressed (critical vs optional), and suggest concrete next steps for the developer. Do not write to any files — just respond with your analysis.`;
+
+          const provider = getProviderForFeature("codeReview");
+          const stream = new ReadableStream({
+            start(controller) {
+              const enc = new TextEncoder();
+              let closed = false;
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+              }
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+              streamAIResponse(prompt, provider, self.repoRoot, send, finish);
+            },
+          });
+          return new Response(stream, {
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", ...headers },
+          });
+        }
+
+        if (url.pathname === "/api/pr-analyze-message" && req.method === "POST") {
+          const body = await req.json() as {
+            messages: { role: string; content: string }[];
+          };
+          const history = body.messages.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n");
+          const provider = getProviderForFeature("codeReview");
+          const stream = new ReadableStream({
+            start(controller) {
+              const enc = new TextEncoder();
+              let closed = false;
+              function send(data: object) {
+                if (closed) return;
+                try { controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+              }
+              function finish() {
+                if (closed) return;
+                closed = true;
+                try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch {}
+                try { controller.close(); } catch {}
+              }
+              streamAIResponse(history, provider, self.repoRoot, send, finish);
+            },
+          });
+          return new Response(stream, {
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", ...headers },
+          });
+        }
+
         if (url.pathname === "/api/review-save" && req.method === "POST") {
           const body = await req.json() as { file: string; content: string };
           const reviewDir = join(self.repoRoot, ".reviews");
