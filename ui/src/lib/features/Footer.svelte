@@ -33,7 +33,11 @@
     successMsg = null;
     try {
       const res = await fetch("/api/generate-commit", { method: "POST" });
-      if (!res.ok || !res.body) throw new Error("Request failed");
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.error ?? "Request failed");
+      }
+      if (!res.body) throw new Error("No response body");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -53,12 +57,12 @@
             const parsed = JSON.parse(data);
             if (parsed.type === "text") commitMessage += parsed.text;
             else if (parsed.type === "error") throw new Error(parsed.error);
-          } catch (e) { if (e instanceof Error && e.message) throw e; }
+          } catch (e) { if (e instanceof Error) throw e; }
         }
       }
       commitMessage = commitMessage.trim();
     } catch (e) {
-      errorMsg = (e as Error).message;
+      errorMsg = (e as Error).message || "Unknown error generating commit message";
     } finally {
       generating = false;
     }

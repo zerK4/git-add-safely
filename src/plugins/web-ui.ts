@@ -470,6 +470,17 @@ export class WebUIPlugin implements Plugin {
           const repoRoot = repoResult.stdout.trim();
 
           const stagedFiles = context.stagedFiles.map((f) => f.path);
+          if (stagedFiles.length === 0) {
+            const errStream = new ReadableStream({
+              start(controller) {
+                const enc = new TextEncoder();
+                controller.enqueue(enc.encode(`data: ${JSON.stringify({ type: "error", error: "No staged files. Run git add first." })}\n\n`));
+                controller.enqueue(enc.encode("data: [DONE]\n\n"));
+                controller.close();
+              },
+            });
+            return new Response(errStream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+          }
           const diffs = stagedFiles.map((file) => {
             const r = spawnSync("git", ["diff", "--cached", "--", file], { encoding: "utf-8" });
             return { file, diff: r.stdout ?? "" };
