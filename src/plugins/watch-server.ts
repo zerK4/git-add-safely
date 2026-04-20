@@ -801,6 +801,79 @@ Please analyze this PR review conversation. Summarize the key findings, highligh
           return Response.json({ ok: true, path: `.reviews/${safeName}.md` }, { headers });
         }
 
+        // --- User stats ---
+        if (url.pathname === "/api/user-stats" && req.method === "GET") {
+          const authorName = spawnSync("git", ["config", "user.name"], { encoding: "utf-8" }).stdout.trim();
+          const authorEmail = spawnSync("git", ["config", "user.email"], { encoding: "utf-8" }).stdout.trim();
+
+          // Commits per day (last 30 days)
+          const logResult = spawnSync("git", [
+            "log", `--author=${authorName}`, "--format=%ad", "--date=short", "--since=30 days ago"
+          ], { encoding: "utf-8" });
+          const commitDates = logResult.stdout.trim().split("\n").filter(Boolean);
+          const commitsPerDay: Record<string, number> = {};
+          for (const d of commitDates) {
+            commitsPerDay[d] = (commitsPerDay[d] ?? 0) + 1;
+          }
+
+          // Lines added/removed (last 30 days)
+          const numstatResult = spawnSync("git", [
+            "log", `--author=${authorName}`, "--numstat", "--since=30 days ago", "--format="
+          ], { encoding: "utf-8" });
+          let linesAdded = 0, linesRemoved = 0;
+          for (const line of numstatResult.stdout.trim().split("\n")) {
+            const parts = line.split("\t");
+            if (parts.length >= 2 && parts[0] !== "-" && parts[1] !== "-") {
+              linesAdded += parseInt(parts[0] ?? "0") || 0;
+              linesRemoved += parseInt(parts[1] ?? "0") || 0;
+            }
+          }
+
+          // Branch ahead count vs main/master
+          let branchAhead = 0;
+          const branchResult = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf-8" });
+          const currentBranch = branchResult.stdout.trim();
+          const mainBranch = spawnSync("git", ["rev-parse", "--verify", "main"], { encoding: "utf-8" }).status === 0 ? "main" : "master";
+          if (currentBranch !== mainBranch) {
+            const aheadResult = spawnSync("git", ["rev-list", "--count", `${mainBranch}..HEAD`], { encoding: "utf-8" });
+            branchAhead = parseInt(aheadResult.stdout.trim()) || 0;
+          }
+
+          // Last commit date
+          const lastCommitResult = spawnSync("git", ["log", "-1", "--format=%ad", "--date=iso"], { encoding: "utf-8" });
+          const lastCommit = lastCommitResult.stdout.trim();
+
+          // PR stats via gh
+          let prs: { open: number; merged: number; closed: number; list: any[] } = { open: 0, merged: 0, closed: 0, list: [] };
+          try {
+            const prResult = spawnSync("gh", [
+              "pr", "list", "--author=@me", "--state=all",
+              "--json", "number,title,state,createdAt,url",
+              "--limit=20"
+            ], { encoding: "utf-8" });
+            if (prResult.status === 0) {
+              const prList = JSON.parse(prResult.stdout || "[]");
+              prs.list = prList;
+              for (const pr of prList) {
+                if (pr.state === "OPEN") prs.open++;
+                else if (pr.state === "MERGED") prs.merged++;
+                else prs.closed++;
+              }
+            }
+          } catch {}
+
+          return Response.json({
+            author: { name: authorName, email: authorEmail },
+            commitsLast30: commitDates.length,
+            linesAdded,
+            linesRemoved,
+            commitsPerDay,
+            branchAhead,
+            lastCommit,
+            prs,
+          }, { headers });
+        }
+
         // --- Settings ---
         if (url.pathname === "/api/settings" && req.method === "GET") {
           return Response.json(readSettings(), { headers });

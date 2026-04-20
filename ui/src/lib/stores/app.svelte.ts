@@ -1,5 +1,5 @@
-import { fetchContext, fetchDiff, fetchUnstagedDiff, stageFile, unstageFile, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes, fetchSettings, postSettings } from "$lib/api/client";
-import type { NoteEntry, AppSettings, UIPreferences } from "$lib/api/client";
+import { fetchContext, fetchDiff, fetchUnstagedDiff, stageFile, unstageFile, postApprove, postCancel, createConversation, persistMessage, fetchMessages, fetchNotes, saveNoteRemote, fetchDiffStats, fetchAllNotes, fetchSettings, postSettings, fetchUserStats } from "$lib/api/client";
+import type { NoteEntry, AppSettings, UIPreferences, UserStats } from "$lib/api/client";
 import { parseDiff, toSplitRows } from "$lib/diff/parser";
 import type { AppContext, FileStatus, ParsedDiff, SplitRow, ChatMessage } from "$lib/types";
 
@@ -30,6 +30,10 @@ let _reviewAllPinned = $state(false); // true = shown as right panel while DiffV
 // Settings
 let _settingsOpen = $state(false);
 let _settings = $state<AppSettings | null>(null);
+
+// User stats
+let _userStats = $state<UserStats | null>(null);
+let _userStatsLoading = $state(false);
 
 // Watch mode
 let _watchMode = $state(false);
@@ -104,6 +108,9 @@ export const store = {
   get settingsOpen() { return _settingsOpen; },
   get settings() { return _settings; },
   get diffLineNumbers(): 1 | 2 { return (_settings?.ui?.diffLineNumbers ?? 2); },
+  // User stats
+  get userStats() { return _userStats; },
+  get userStatsLoading() { return _userStatsLoading; },
   // Watch mode
   get watchMode() { return _watchMode; },
   get unstagedFiles() { return _unstagedFiles; },
@@ -751,5 +758,17 @@ export async function sendPRAnalyzeMessage(text: string) {
     }
   } finally {
     _prAnalyzeStreaming = false;
+  }
+}
+
+export async function loadUserStats() {
+  if (_userStatsLoading) return;
+  _userStatsLoading = true;
+  try {
+    _userStats = await fetchUserStats();
+  } catch {
+    // silent — stats are non-critical
+  } finally {
+    _userStatsLoading = false;
   }
 }

@@ -372,6 +372,30 @@ export interface AppSettings {
   ui?: UIPreferences;
 }
 
+// --- User stats ---
+
+export interface UserStats {
+  author: { name: string; email: string };
+  commitsLast30: number;
+  linesAdded: number;
+  linesRemoved: number;
+  commitsPerDay: Record<string, number>;
+  branchAhead: number;
+  lastCommit: string;
+  prs: {
+    open: number;
+    merged: number;
+    closed: number;
+    list: { number: number; title: string; state: string; createdAt: string; url: string }[];
+  };
+}
+
+export async function fetchUserStats(): Promise<UserStats> {
+  const res = await fetch("/api/user-stats");
+  if (!res.ok) throw new Error(`Failed to fetch user stats: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchSettings(): Promise<AppSettings> {
   const res = await fetch("/api/settings");
   if (!res.ok) throw new Error(`Failed to fetch settings: ${res.status}`);

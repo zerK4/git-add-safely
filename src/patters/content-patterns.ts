@@ -96,54 +96,46 @@ export const contentPatterns = [
       /(?:auth[_-]?token|authtoken)\s*[:=]\s*['"]*[A-Za-z0-9\-._~+/]{16,}['"]*(?:\s|$)/i,
   },
 
-  // Global KEY patterns - catch any variable ending with _KEY
+  // Global KEY patterns - only flag when RHS is a quoted literal (16+ chars) or process.env ref
   {
     name: "Global Key Pattern",
-    regex: /\b[A-Z_]*KEY\b\s*[:=]\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b[A-Z_]*KEY\b\s*[:=]\s*(?:'[A-Za-z0-9\-._~+/]{16,}'|"[A-Za-z0-9\-._~+/]{16,}")/i,
   },
   {
     name: "Global Secret Pattern",
-    regex:
-      /\b[A-Z_]*SECRET\b\s*[:=]\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b[A-Z_]*SECRET\b\s*[:=]\s*(?:'[A-Za-z0-9\-._~+/]{16,}'|"[A-Za-z0-9\-._~+/]{16,}")/i,
   },
   {
     name: "Global Token Pattern",
-    regex:
-      /\b[A-Z_]*TOKEN\b\s*[:=]\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b[A-Z_]*TOKEN\b\s*[:=]\s*(?:'[A-Za-z0-9\-._~+/]{16,}'|"[A-Za-z0-9\-._~+/]{16,}")/i,
   },
   {
     name: "Global Password Pattern",
-    regex:
-      /\b[A-Z_]*PASSWORD\b\s*[:=]\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b[A-Z_]*PASSWORD\b\s*[:=]\s*(?:'[A-Za-z0-9\-._~+/]{8,}'|"[A-Za-z0-9\-._~+/]{8,}")/i,
   },
 
-  // Common environment variable patterns
+  // Common environment variable patterns - ALL_CAPS env var names only, quoted or process.env RHS
   {
     name: "Env Key Pattern",
-    regex:
-      /\b[A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|AUTH|CREDENTIAL)\b\s*[:=]\s*['"]*[^\s'"]{3,}['"]*(?:\s|$)/i,
+    regex: /\b[A-Z][A-Z0-9_]{2,}(?:KEY|SECRET|TOKEN|PASSWORD|AUTH|CREDENTIAL)\b\s*[:=]\s*(?:'[^\s'"]{8,}'|"[^\s'"]{8,}"|`[^\s`]{8,}`)/,
   },
 
-  // JavaScript/TypeScript const/let/var declarations
+  // JavaScript/TypeScript const/let/var declarations - only quoted literal RHS
   {
     name: "JS Key Declaration",
-    regex:
-      /\b(?:const|let|var)\s+[A-Z_]*KEY\b\s*=\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b(?:const|let|var)\s+[A-Z_]*KEY\b\s*=\s*(?:'[A-Za-z0-9\-._~+/]{16,}'|"[A-Za-z0-9\-._~+/]{16,}"|`[A-Za-z0-9\-._~+/]{16,}`)/i,
   },
   {
     name: "JS Secret Declaration",
-    regex:
-      /\b(?:const|let|var)\s+[A-Z_]*SECRET\b\s*=\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b(?:const|let|var)\s+[A-Z_]*SECRET\b\s*=\s*(?:'[A-Za-z0-9\-._~+/]{16,}'|"[A-Za-z0-9\-._~+/]{16,}"|`[A-Za-z0-9\-._~+/]{16,}`)/i,
   },
   {
     name: "JS Token Declaration",
-    regex:
-      /\b(?:const|let|var)\s+[A-Z_]*TOKEN\b\s*=\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b(?:const|let|var)\s+[A-Z_]*TOKEN\b\s*=\s*(?:'[A-Za-z0-9\-._~+/]{16,}'|"[A-Za-z0-9\-._~+/]{16,}"|`[A-Za-z0-9\-._~+/]{16,}`)/i,
   },
   {
     name: "JS Password Declaration",
-    regex:
-      /\b(?:const|let|var)\s+[A-Z_]*PASSWORD\b\s*=\s*['"]*[A-Za-z0-9\-._~+/]{3,}['"]*(?:\s|$)/i,
+    regex: /\b(?:const|let|var)\s+[A-Z_]*PASSWORD\b\s*=\s*(?:'[A-Za-z0-9\-._~+/]{8,}'|"[A-Za-z0-9\-._~+/]{8,}"|`[A-Za-z0-9\-._~+/]{8,}`)/i,
   },
 
   // Catch-all for suspicious patterns
@@ -363,11 +355,10 @@ export const contentPatterns = [
       /(?:sftp[_-]?password|sftppassword)\s*[:=]\s*['"]*[^'"\s]{4,}['"]*(?:\s|$)/i,
   },
 
-  // Base64 Encoded Secrets (common pattern)
+  // Base64 Encoded Secrets - require quoted literal to avoid variable references
   {
     name: "Base64 Secret",
-    regex:
-      /(?:secret|key|token|password)\s*[:=]\s*['"]*[A-Za-z0-9+/]{20,}={0,2}['"]*(?:\s|$)/i,
+    regex: /(?:secret|key|token|password)\s*[:=]\s*(?:'[A-Za-z0-9+/]{20,}={0,2}'|"[A-Za-z0-9+/]{20,}={0,2}")/i,
   },
 
   // URL with embedded credentials
