@@ -1,6 +1,6 @@
 {
   "name": "git-add-safely",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Git add wrapper with secret scanning and AI code review UI",
   "author": "Sebastian Pavel",
   "license": "MIT",
